@@ -34,7 +34,8 @@ xyzrender caffeine.xyz --gif-rot -go movie.gif  # rotation GIF for slides
 
 ## Installation
 
-From PyPI:
+### From PyPI:  
+*not yet published - see manual install below*
 
 ```bash
 pip install xyzrender
@@ -44,6 +45,18 @@ Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv add xyzrender
+```
+
+### From Source:  
+
+```bash
+git clone https://github.com/aligfellow/xyzrender.git
+cd xyzrender
+pip install .
+# or
+pip install -e .
+# or simply
+pip install git+https://github.com/aligfellow/xyzrender.git
 ```
 
 ## Quick start
@@ -212,7 +225,7 @@ xyzrender molecule.xyz -I                      # interactive rotation via v view
 
 The `-I` flag opens the molecule in the [v molecular viewer](https://github.com/briling/v)
 for interactive rotation. Rotate the molecule to the desired orientation, press
-`z` to output coordinates, then close the window. `xyzrender` captures the rotated
+`z` to output coordinates, then close the window with `q`. `xyzrender` captures the rotated
 coordinates and renders from those.
 
 When piping from v directly:
@@ -223,7 +236,7 @@ v molecule.xyz | xyzrender
 
 Orient the molecule, press `z` to output reoriented coordinates, then `q` to close.
 
-This must be installed separately if this option is to be used. The executable should be in `~/bin` for discovery, I will look into cleaning up how this is integrated.
+This must be installed separately if this option is to be used. The executable should be in `~/bin` for discovery. TODO: Look into cleaning up this integration.
 
 ## Transition states and NCI
 

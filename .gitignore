@@ -19,7 +19,6 @@ env/
 CLAUDE*
 *plan*
 *PLAN*
-tasks/
 
 # VSCode config (optional)
 .vscode/
