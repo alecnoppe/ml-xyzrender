@@ -53,7 +53,9 @@ def _write_output(svg: str, output: str, cfg: RenderConfig, parser: argparse.Arg
 
 def main() -> None:
     """Entry point for the CLI."""
-    p = argparse.ArgumentParser(prog="xyzrender", description="Render molecular structures as publication-quality SVG.")
+    p = argparse.ArgumentParser(
+        prog="xyzrender", description="Publication-quality molecular graphics from the command line."
+    )
 
     # --- Input / Output ---
     io_g = p.add_argument_group("input/output")
