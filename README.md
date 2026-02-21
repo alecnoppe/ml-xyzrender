@@ -1,4 +1,4 @@
-# xyzrender: Renders Cartesian molecular structures as publication ready graphics.
+# xyzrender: Publication-quality molecular graphics from the command line.
 
 Render molecular structures as publication-quality SVG, PNG, PDF, and animated GIF from XYZ files or quantum chemistry output.
 
@@ -9,6 +9,28 @@ Render molecular structures as publication-quality SVG, PNG, PDF, and animated G
 [![Typing: ty](https://img.shields.io/badge/typing-ty-EFC621.svg)](https://github.com/astral-sh/ty)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/aligfellow/xyzrender/ci.yml?branch=main&logo=github-actions)](https://github.com/aligfellow/xyzrender/actions)
 [![Codecov](https://img.shields.io/codecov/c/github/aligfellow/xyzrender)](https://codecov.io/gh/aligfellow/xyzrender)
+
+xyzrender turns XYZ files and quantum chemistry output (ORCA, Gaussian, Q-Chem, etc.) into clean SVG, PNG, PDF, and animated GIF graphics — ready for papers, presentations, and supporting information.
+
+Most molecular visualisation tools require manual setup: loading files into a GUI, tweaking camera angles, exporting at the right resolution. xyzrender skips all of that. One command gives you a (mostly) oriented, depth-cued structure with correct bond orders, aromatic ring rendering, and automatic bond connectivity.
+
+**What it handles out of the box:**
+
+- **Bond orders and aromaticity** — double bonds, triple bonds, and aromatic ring notation detected automatically from geometry via [xyzgraph](https://github.com/aligfellow/xyzgraph)
+- **Transition state bonds** — forming/breaking bonds rendered as dashed lines, detected automatically from imaginary frequency vibrations via [graphRC](https://github.com/aligfellow/graphRC)
+- **Non-covalent interactions** — hydrogen bonds and other weak interactions shown as dotted lines, *automatic detection coming soon*
+- **GIF animations** — rotation, TS vibration, and trajectory animations for presentations and SI
+- **VdW surface overlays** — van der Waals spheres on all or selected atoms
+- **Depth fog and gradients** — 3D depth cues without needing a 3D viewer
+- **Multiple output formats** — SVG (default), PNG, PDF, and GIF from the same command
+
+**Preconfigured but extensible.** Built-in presets (`default`, `flat`, `paton`) cover common use cases. Every setting — colors, radii, bond widths, gradients, fog — can be overridden via CLI flags or a custom JSON config file.
+
+```bash
+xyzrender caffeine.xyz                          # SVG with sensible defaults
+xyzrender ts.out --ts -o figure.png             # TS with dashed bonds as PNG
+xyzrender caffeine.xyz --gif-rot -go movie.gif  # rotation GIF for slides
+```
 
 ## Installation
 
@@ -250,7 +272,7 @@ Available rotation axes: `x`, `y`, `z`, `xy`, `xz`, `yz`, `yx`, `zx`, `zy`. Pref
 | `-m`, `--multiplicity` | Spin multiplicity |
 | `--config` | Config preset or JSON path |
 | `--debug` | Debug logging |
-| `-I`, `--interactive` | Interactive rotation via v viewer |
+| `-I`, `--interactive` | Interactive rotation via `v` viewer |
 | `--orient` / `--no-orient` | PCA auto-orientation toggle |
 | `--ts` | Auto-detect TS bonds via graphRC |
 | `--ts-frame` | TS reference frame (0-indexed) |
