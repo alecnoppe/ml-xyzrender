@@ -46,15 +46,22 @@ def load_molecule(path: str | Path, charge: int = 0, multiplicity: int | None = 
     return graph
 
 
-def detect_nci(graph: nx.Graph) -> None:
-    """Detect non-covalent interactions and mark edges with ``NCI=True``.
+def detect_nci(graph: nx.Graph) -> nx.Graph:
+    """Detect non-covalent interactions and return decorated graph.
 
-    Uses xyzgraph's NCI detection.  Modifies graph in-place.
+    Uses xyzgraph's NCI detection.  Returns a new graph with ``NCI=True``
+    edges for each detected interaction.  Pi-system interactions use
+    centroid dummy nodes (``symbol="*"``).
     """
-    from xyzgraph import nci  # ty: ignore
+    from xyzgraph import detect_ncis
+    from xyzgraph.nci import build_nci_graph
 
     logger.info("Detecting NCI interactions")
-    nci.detect_nci(graph)
+    detect_ncis(graph)
+    nci_graph = build_nci_graph(graph)
+    n_nci = sum(1 for _, _, d in nci_graph.edges(data=True) if d.get("NCI"))
+    logger.info("Detected %d NCI interactions", n_nci)
+    return nci_graph
 
 
 def load_ts_molecule(
@@ -160,7 +167,7 @@ def apply_rotation(graph: nx.Graph, rx: float, ry: float, rz: float) -> None:
 
     Rotation is around the molecular centroid so the molecule stays centered.
     """
-    n = graph.number_of_nodes()
+    nodes = list(graph.nodes())
     rx, ry, rz = np.radians(rx), np.radians(ry), np.radians(rz)
     cx, sx = np.cos(rx), np.sin(rx)
     cy, sy = np.cos(ry), np.sin(ry)
@@ -173,11 +180,11 @@ def apply_rotation(graph: nx.Graph, rx: float, ry: float, rz: float) -> None:
             [-sy, sx * cy, cx * cy],
         ]
     )
-    positions = np.array([graph.nodes[i]["position"] for i in range(n)])
+    positions = np.array([graph.nodes[n]["position"] for n in nodes])
     centroid = positions.mean(axis=0)
     rotated = (rot @ (positions - centroid).T).T + centroid
-    for i in range(n):
-        graph.nodes[i]["position"] = tuple(rotated[i].tolist())
+    for i, nid in enumerate(nodes):
+        graph.nodes[nid]["position"] = tuple(rotated[i].tolist())
 
 
 def apply_axis_angle_rotation(graph: nx.Graph, axis: np.ndarray, angle: float) -> None:
@@ -186,18 +193,18 @@ def apply_axis_angle_rotation(graph: nx.Graph, axis: np.ndarray, angle: float) -
     Uses Rodrigues' rotation formula for a clean rotation around a single
     axis vector. Rotation is around the molecular centroid.
     """
-    n = graph.number_of_nodes()
+    nodes = list(graph.nodes())
     theta = np.radians(angle)
     k = axis / np.linalg.norm(axis)
     c, s = np.cos(theta), np.sin(theta)
     k_cross = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
     rot = c * np.eye(3) + s * k_cross + (1 - c) * np.outer(k, k)
 
-    positions = np.array([graph.nodes[i]["position"] for i in range(n)])
+    positions = np.array([graph.nodes[n]["position"] for n in nodes])
     centroid = positions.mean(axis=0)
     rotated = (rot @ (positions - centroid).T).T + centroid
-    for i in range(n):
-        graph.nodes[i]["position"] = tuple(rotated[i].tolist())
+    for i, nid in enumerate(nodes):
+        graph.nodes[nid]["position"] = tuple(rotated[i].tolist())
 
 
 def load_trajectory_frames(path: str | Path) -> list[dict]:

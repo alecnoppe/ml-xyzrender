@@ -126,26 +126,28 @@ xyzrender asparagine.xyz --hy --vdw --config paton -o asparagine_vdw_paton.svg  
 
 ### Transition states and NCI
 
-xyzrender uses [xyzgraph](https://github.com/aligfellow/xyzgraph) for molecular graph construction from Cartesian coordinates — determining bond connectivity, bond orders, and detecting aromatic rings and non-covalent interactions. It also provides element data (van der Waals radii, atomic numbers) used throughout rendering.
+xyzrender uses [xyzgraph](https://github.com/aligfellow/xyzgraph) for molecular graph construction from Cartesian coordinates — determining bond connectivity, bond orders, detecting aromatic rings, and non-covalent interactions. It also provides element data (van der Waals radii, atomic numbers) used throughout rendering.
 
 Transition state analysis uses [graphRC](https://github.com/aligfellow/graphRC) for internal coordinate vibrational mode analysis. Given a QM output file (ORCA, Gaussian, etc.), graphRC identifies which bonds are forming or breaking at the transition state with `--ts`. These are rendered as dashed bonds. graphRC is also used to generate TS vibration frames for `--gif-ts` animations.
+
+NCI detection uses [xyzgraph](https://github.com/aligfellow/xyzgraph)'s `detect_ncis` to identify hydrogen bonds, halogen bonds, pi-stacking, and other non-covalent interactions from geometry. These are rendered as dotted bonds. For pi-system interactions (e.g. pi-stacking, cation-pi), centroid dummy nodes are placed at the mean position of the pi-system atoms. For trajectory GIFs with `--nci`, interactions are re-detected per frame.
 
 | Auto TS | Manual TS bond |
 |------|----------------|
 | ![ts](examples/sn2_ts.svg) | ![ts](examples/sn2_ts_man.svg) |
 
 ```bash
-xyzrender sn2.out --hy --ts -o sn2_ts.svg 
-xyzrender sn2.out --hy --ts-bond "1-2" -o sn2_ts_man.svg # only one of the TS bonds added
+xyzrender sn2.out --hy --ts -o sn2_ts.svg
+xyzrender sn2.out --hy --ts-bond "1-2" -o sn2_ts_man.svg  # specific TS bond only
 ```
 
 | Auto NCI | Manual NCI |
 |------|----------------|
-| ![automatic nci detections not implemented](examples/nci.svg) | ![nci](examples/nci_man.svg) |
+| ![nci](examples/nci.svg) | ![nci](examples/nci_man.svg) |
 
 ```bash
-xyzrender Hbond.xyz --nci -o nci.svg # NOT YET IMPLEMENTED
-xyzrender Hbond.xyz --nci-bond "8-9" -o nci_man.svg # only one of the TS bonds added
+xyzrender Hbond.xyz --nci -o nci.svg                # auto-detect all NCI interactions
+xyzrender Hbond.xyz --nci-bond "8-9" -o nci_man.svg  # specific NCI bond only
 ```
 
 ### QM output files
@@ -179,6 +181,19 @@ xyzrender bimp.out --gif-trj --ts -go bimp_trj.gif                        # traj
 
 GIF defaults to `{input_basename}.gif`. Use `-go` to override.
 
+### Combined options
+
+The visualisation supports most combinations of these options.  
+- `--gif-ts` and `--gif-trj` are *mutually exclusive*
+
+| TS animation | trj animation |
+|--------------|---------------|
+| ![TS bimp full nci](examples/bimp_nci_ts.gif) | ![Bimp trj nci](examples/bimp_nci_trj.gif) |
+
+```bash
+xyzrender bimp.out --gif-ts --gif-rot --nci --vdw 84-169 -go bimp_nci_ts.gif  # TS animation + nci + vdw + rotate
+xyzrender bimp.out --gif-trj --nci --ts --vdw 84-169 -go bimp_nci_trj.gif  # TS bonds + nci + vdw + trj
+```
 
 ## Orientation
 
@@ -192,12 +207,13 @@ xyzrender molecule.xyz -I                      # interactive rotation via v view
 
 ### Interactive rotation (`-I`)
 
-The `-I` flag opens the molecule in the [v molecular viewer](https://github.com/briling/v)
+The `-I` flag opens the molecule in the [**v** molecular viewer](https://github.com/briling/v) by [Ksenia Briling **@briling**](https://github.com/briling)
 for interactive rotation. Rotate the molecule to the desired orientation, press
 `z` to output coordinates, then close the window with `q`. `xyzrender` captures the rotated
 coordinates and renders from those.
 
-When piping from v directly:
+We can also pipe from v directly: 
+- *though this won't work for computational output files*
 
 ```bash
 v molecule.xyz | xyzrender
@@ -283,7 +299,7 @@ Requires `cairosvg` and `Pillow` (`pip install 'xyzrender[gif]'`).
 | `--gif-rot [axis]` | Rotation GIF (default: y). Combinable with `--gif-ts` |
 | `-go`, `--gif-output` | GIF output path (default: `{basename}.gif`) |
 | `--gif-fps` | Frames per second (default: 10) |
-| `--gif-frames` | Rotation frame count (default: 120) |
+| `--rot-frames` | Rotation frame count (default: 120) |
 
 Available rotation axes: `x`, `y`, `z`, `xy`, `xz`, `yz`, `yx`, `zx`, `zy`. Prefix `-` to reverse (e.g. `-xy`).
 

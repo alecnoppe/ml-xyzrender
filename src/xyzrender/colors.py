@@ -27,16 +27,22 @@ _CPK: list[int] = [
 ] + [0xA0A0A0] * 14  # fmt: skip
 
 _DEFAULT_COLOR = 0xA0A0A0
+_CENTROID_COLOR = 0x008080  # teal for NCI pi-system centroids
 
 
 def get_color(atomic_number: int, overrides: dict[str, str] | None = None) -> Color:
-    """Get element color by atomic number, with optional per-element overrides."""
+    """Get element color by atomic number, with optional per-element overrides.
+
+    Atomic number 0 is used for NCI pi-system centroid dummy nodes.
+    """
     if overrides:
         from xyzgraph import DATA
 
-        sym = DATA.n2s.get(atomic_number, "")
+        sym = DATA.n2s.get(atomic_number, 0)
         if sym in overrides:
             return Color.from_hex(overrides[sym])
+    if atomic_number == 0:
+        return Color.from_int(_CENTROID_COLOR)
     if 0 < atomic_number < len(_CPK):
         return Color.from_int(_CPK[atomic_number])
     return Color.from_int(_DEFAULT_COLOR)

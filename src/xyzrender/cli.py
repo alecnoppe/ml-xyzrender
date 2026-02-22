@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,6 +22,8 @@ from xyzrender.io import (
     rotate_with_viewer,
 )
 from xyzrender.renderer import render_svg
+
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_EXTENSIONS = {"svg", "png", "pdf"}
 
@@ -117,7 +120,7 @@ def main() -> None:
     )
     gif_g.add_argument("-go", "--gif-output", default=None, help="GIF output path")
     gif_g.add_argument("--gif-fps", type=int, default=10, help="GIF frames per second (default: 10)")
-    gif_g.add_argument("--gif-frames", type=int, default=120, help="Rotation GIF frames (default: 120)")
+    gif_g.add_argument("--rot-frames", type=int, default=120, help="Rotation frames (default: 120)")
 
     args = p.parse_args()
 
@@ -202,10 +205,29 @@ def main() -> None:
     else:
         cfg.auto_orient = True
 
-    # Output path defaults
+    # Output path defaults and validation
     base = _basename(args.input, from_stdin)
     if not args.output:
         args.output = f"{base}.svg"
+
+    static_ext = args.output.rsplit(".", 1)[-1].lower()
+    if static_ext not in _SUPPORTED_EXTENSIONS:
+        supported = ", ".join("." + e for e in sorted(_SUPPORTED_EXTENSIONS))
+        p.error(f"Unsupported static output format: .{static_ext} (use {supported})")
+
+    wants_gif = args.gif_ts or args.gif_rot or args.gif_trj
+    if args.rot_frames != 120 and not args.gif_rot:
+        logger.warning("--rot-frames ignored without --gif-rot")
+    if args.gif_ts and args.gif_trj:
+        p.error(
+            "--gif-ts and --gif-trj are mutually exclusive. "
+            "Use --gif-trj with --ts if you want TS bonds shown in the trj gif"
+        )
+    if wants_gif:
+        gif_path = args.gif_output or f"{base}.gif"
+        gif_ext = gif_path.rsplit(".", 1)[-1].lower()
+        if gif_ext != "gif":
+            p.error(f"GIF output must have .gif extension, got: .{gif_ext}")
 
     # Load molecule (--gif-ts implies TS detection)
     needs_ts = args.ts_detect or args.gif_ts
@@ -222,7 +244,7 @@ def main() -> None:
 
     # Post-load analysis
     if args.nci:
-        detect_nci(graph)
+        graph = detect_nci(graph)
 
     # Orientation
     if args.interactive:
@@ -233,7 +255,6 @@ def main() -> None:
     _write_output(svg, args.output, cfg, p)
 
     # GIF output
-    wants_gif = args.gif_ts or args.gif_rot or args.gif_trj
     if wants_gif:
         from xyzrender.gif import (
             ROTATION_AXES,
@@ -245,8 +266,6 @@ def main() -> None:
 
         if args.gif_rot and args.gif_rot not in ROTATION_AXES:
             p.error(f"Invalid rotation axis: {args.gif_rot} (valid: {', '.join(ROTATION_AXES)})")
-
-        gif_path = args.gif_output or f"{base}.gif"
 
         if args.gif_ts and args.gif_rot:
             if not args.input:
@@ -260,8 +279,9 @@ def main() -> None:
                 ts_frame=args.ts_frame,
                 fps=args.gif_fps,
                 axis=args.gif_rot,
-                n_frames=args.gif_frames,
+                n_frames=args.rot_frames,
                 reference_graph=graph,
+                detect_nci=args.nci,
             )
         elif args.gif_ts:
             if not args.input:
@@ -275,9 +295,8 @@ def main() -> None:
                 ts_frame=args.ts_frame,
                 fps=args.gif_fps,
                 reference_graph=graph,
+                detect_nci=args.nci,
             )
-        elif args.gif_rot:
-            render_rotation_gif(graph, cfg, gif_path, n_frames=args.gif_frames, fps=args.gif_fps, axis=args.gif_rot)
         elif args.gif_trj:
             if not args.input:
                 p.error("--gif-trj requires an input file")
@@ -292,7 +311,11 @@ def main() -> None:
                 multiplicity=args.multiplicity,
                 fps=args.gif_fps,
                 reference_graph=graph,
+                detect_nci=args.nci,
+                axis=args.gif_rot or None,
             )
+        elif args.gif_rot:
+            render_rotation_gif(graph, cfg, gif_path, n_frames=args.rot_frames, fps=args.gif_fps, axis=args.gif_rot)
 
 
 if __name__ == "__main__":

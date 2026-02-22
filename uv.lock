@@ -1128,7 +1128,7 @@ wheels = [
 
 [[package]]
 name = "xyzgraph"
-version = "1.5.2"
+version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1137,14 +1137,14 @@ dependencies = [
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "rdkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/5a/fe5e0118649b495d19b3aa8bb48421d8ee639401421814806217beb5aea4/xyzgraph-1.5.2.tar.gz", hash = "sha256:641d300d3bc3d8ed59794a375f9a654a824cb3d3daba979d28d96b8b3daf9435", size = 119425, upload-time = "2026-02-21T19:20:56.098Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/a3/af155624e56f782701290a84dd3a66b950463438ba4351c9d6bb4acdff59/xyzgraph-1.6.0.tar.gz", hash = "sha256:7d51859659e8dc24a98b11e146848b04676523f0992271edf5f65a6883cc8a7e", size = 141725, upload-time = "2026-02-22T19:45:46.186Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/fe/c3375c5e3e6047424e74cacbfa05c700f1795ef1e171e91db1f4a14339be/xyzgraph-1.5.2-py3-none-any.whl", hash = "sha256:f965cfa976a3ba13060ff574200b3efc25ac2a0956aca74bbf3a98a33376558c", size = 86543, upload-time = "2026-02-21T19:20:53.715Z" },
+    { url = "https://files.pythonhosted.org/packages/13/e4/1bf6bfe343114bbdebf81d9e8f4ea96f0db02843ec63297b98505b863301/xyzgraph-1.6.0-py3-none-any.whl", hash = "sha256:621ad265424578280b4b8453dcb8ec2048e2a8a01a649106d76a6c0164ee510a", size = 106336, upload-time = "2026-02-22T19:45:43.92Z" },
 ]
 
 [[package]]
 name = "xyzrender"
-version = "0.1.0"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "cairosvg" },
@@ -1172,7 +1172,7 @@ requires-dist = [
     { name = "graphrc" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pillow" },
-    { name = "xyzgraph", specifier = ">=0.3" },
+    { name = "xyzgraph", specifier = ">=1.6" },
 ]
 
 [package.metadata.requires-dev]

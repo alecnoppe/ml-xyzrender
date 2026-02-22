@@ -32,7 +32,9 @@ xyzrender "$DIR/mn-h2.log" -o "$OUT/mn-h2_qm.svg" --ts
 echo "=== TS and NCI options ==="
 xyzrender "$DIR/sn2.out" --ts-bond "1-2" -o "$OUT/sn2_ts_man.svg" 
 xyzrender "$DIR/sn2.out" --ts --hy -o "$OUT/sn2_ts.svg" 
-
+xyzrender "$DIR/Hbond.xyz" --hy --nci-bond "8-9" -o "$OUT/nci_man.svg"  # specific NCI bond only
+xyzrender "$DIR/Hbond.xyz" --hy --nci -o "$OUT/nci.svg"  # specific NCI bond only
+xyzrender "$DIR/bimp.out" --nci -o "$OUT/bimp_nci.svg"  # all NCI bonds
 
 echo "=== GIF animations ==="
 xyzrender "$DIR/caffeine.xyz" -o "$OUT/caffeine_gif.svg" --gif-rot -go "$OUT/caffeine.gif"
@@ -40,5 +42,7 @@ xyzrender "$DIR/caffeine.xyz" -o "$OUT/caffeine_xy.svg" --gif-rot xy -go "$OUT/c
 xyzrender "$DIR/bimp.out" -o "$OUT/bimp_rot.svg" --gif-rot --gif-ts --vdw 84-169 -go "$OUT/bimp.gif"
 xyzrender "$DIR/bimp.out" -o "$OUT/bimp_trj.svg" --gif-trj --ts -go "$OUT/bimp_trj.gif"
 xyzrender "$DIR/mn-h2.log" -o "$OUT/mn-h2_gif.svg" --gif-ts -go "$OUT/mn-h2.gif"
+xyzrender "$DIR/bimp.out" -o "$OUT/bimp_nci.svg" --ts --gif-trj --vdw 84-169 --nci -go "$OUT/bimp_nci_trj.gif"
+xyzrender "$DIR/bimp.out" -o "$OUT/bimp_nci.svg" --gif-ts --gif-rot --vdw 84-169 --nci -go "$OUT/bimp_nci_ts.gif"
 
 echo "Done! Outputs written to $OUT/"

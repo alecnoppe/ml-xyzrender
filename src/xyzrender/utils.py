@@ -9,24 +9,32 @@ def pca_orient(
     pos: np.ndarray,
     priority_pairs: list[tuple[int, int]] | None = None,
     priority_weight: float = 5.0,
+    *,
+    fit_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Align molecule: largest variance along x, then y, smallest along z (depth).
 
     If *priority_pairs* are given (e.g. TS bonds), those atom positions are
     up-weighted so their bond vectors preferentially lie in the xy (visible) plane.
+    If *fit_mask* is given, only those positions are used to compute the PCA
+    axes; the rotation is still applied to all positions.  This prevents NCI
+    centroid dummy nodes from influencing the orientation.
     """
-    c = pos - pos.mean(axis=0)
+    fit = pos[fit_mask] if fit_mask is not None else pos
+    centroid = fit.mean(axis=0)
+    c = pos - centroid  # center all positions around fit centroid
+    c_fit = fit - centroid
     if priority_pairs:
         # Duplicate priority atom positions to bias PCA towards their plane
         extra = []
         for i, j in priority_pairs:
-            extra.extend([c[i], c[j]])
+            extra.extend([c_fit[i], c_fit[j]])
         extra = np.array(extra) * priority_weight
-        c_weighted = np.vstack([c, extra])
+        c_weighted = np.vstack([c_fit, extra])
     else:
-        c_weighted = c
+        c_weighted = c_fit
     _, _, vt = np.linalg.svd(c_weighted, full_matrices=False)
-    oriented = c @ vt.T
+    oriented = c @ vt.T  # apply rotation to ALL positions
 
     # For TS bonds: rotate around z to align TS bond vectors along x (horizontal)
     if priority_pairs:

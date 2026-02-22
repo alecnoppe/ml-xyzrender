@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from xyzrender.renderer import render_svg
+from xyzrender.utils import pca_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +76,6 @@ def _rotation_axis(axis_str: str) -> tuple[np.ndarray, float]:
     return v / np.linalg.norm(v), sign
 
 
-def _pca_matrix(positions: np.ndarray) -> np.ndarray:
-    from xyzrender.utils import pca_matrix
-
-    return pca_matrix(positions)
-
-
 def _orient_frames(frames: list[dict], vt: np.ndarray) -> list[dict]:
     """Apply a fixed PCA rotation to all frames (center each frame independently)."""
     oriented = []
@@ -93,16 +88,17 @@ def _orient_frames(frames: list[dict], vt: np.ndarray) -> list[dict]:
 
 def _orient_graph(graph, vt: np.ndarray) -> None:
     """Apply PCA rotation to graph node positions in-place."""
-    n = graph.number_of_nodes()
-    pos = np.array([graph.nodes[i]["position"] for i in range(n)])
+    nodes = list(graph.nodes())
+    pos = np.array([graph.nodes[n]["position"] for n in nodes])
     centered = pos - pos.mean(axis=0)
     rotated = centered @ vt.T
-    for i in range(n):
-        graph.nodes[i]["position"] = tuple(rotated[i].tolist())
+    for i, nid in enumerate(nodes):
+        graph.nodes[nid]["position"] = tuple(rotated[i].tolist())
 
 
 if TYPE_CHECKING:
     import networkx as nx
+    from xyzgraph.nci import NCIAnalyzer
 
     from xyzrender.types import RenderConfig
 
@@ -118,6 +114,7 @@ def render_vibration_gif(
     ts_frame: int = 0,
     fps: int = 10,
     reference_graph: nx.Graph | None = None,
+    detect_nci: bool = False,
 ) -> None:
     """Render a TS vibrational mode as an animated GIF.
 
@@ -126,6 +123,8 @@ def render_vibration_gif(
 
     If ``reference_graph`` is provided (e.g. from ``-V`` viewer rotation),
     all frames are rotated to match that orientation.
+    If ``detect_nci`` is True, NCI interactions are detected once on the
+    TS geometry and applied to every frame (centroids recomputed per frame).
     """
     try:
         from graphrc import run_vib_analysis
@@ -146,6 +145,14 @@ def render_vibration_gif(
     ts_graph = results["graph"]["ts_graph"]
     frames = results["trajectory"]["frames"]
 
+    # NCI: detect once on TS geometry, apply to all frames
+    fixed_ncis = None
+    if detect_nci:
+        from xyzgraph import detect_ncis
+
+        detect_ncis(ts_graph)
+        fixed_ncis = ts_graph.graph.get("ncis", [])
+
     # Apply viewer rotation to all frames if a reference orientation was given
     if reference_graph is not None:
         logger.debug("Applying Kabsch rotation from viewer orientation")
@@ -156,7 +163,7 @@ def render_vibration_gif(
     if config.auto_orient:
         import copy
 
-        vt = _pca_matrix(np.array(frames[0]["positions"]))
+        vt = pca_matrix(np.array(frames[0]["positions"]))
         frames = _orient_frames(frames, vt)
         _orient_graph(ts_graph, vt)
         config = copy.copy(config)
@@ -164,7 +171,7 @@ def render_vibration_gif(
 
     # graphRC's frames are already a full oscillation cycle — just loop
     logger.info("Rendering vibration GIF (%d frames)", len(frames))
-    pngs = _render_frames(ts_graph, frames, config)
+    pngs = _render_frames(ts_graph, frames, config, fixed_ncis=fixed_ncis)
     _stitch_gif(pngs, output, fps)
     logger.info("Wrote %s", output)
 
@@ -182,20 +189,21 @@ def render_vibration_rotation_gif(
     axis: str = "y",
     n_frames: int | None = None,
     reference_graph: nx.Graph | None = None,
+    detect_nci: bool = False,
 ) -> None:
     """Render a combined vibration + rotation GIF.
 
     Total frames = n_vib_frames * rotations, so the vibration cycles exactly
     ``rotations`` times during one full 360° spin.  If ``n_frames`` is given,
     rotations is computed as ``round(n_frames / n_vib)`` (minimum 1).
+    If ``detect_nci`` is True, NCI interactions are detected once on the
+    TS geometry and applied to every frame.
     """
     try:
         from graphrc import run_vib_analysis
     except ImportError:
         msg = "Vibration+rotation GIF requires graphrc"
         raise ImportError(msg) from None
-
-    from xyzrender.io import apply_axis_angle_rotation
 
     results = run_vib_analysis(
         input_file=path,
@@ -210,6 +218,14 @@ def render_vibration_rotation_gif(
     ts_graph = results["graph"]["ts_graph"]
     vib_frames = results["trajectory"]["frames"]
 
+    # NCI: detect once on TS geometry, apply to all frames
+    fixed_ncis = None
+    if detect_nci:
+        from xyzgraph import detect_ncis
+
+        detect_ncis(ts_graph)
+        fixed_ncis = ts_graph.graph.get("ncis", [])
+
     if reference_graph is not None:
         logger.debug("Applying Kabsch rotation from viewer orientation")
         rot = _compute_rotation(ts_graph, reference_graph)
@@ -217,35 +233,30 @@ def render_vibration_rotation_gif(
 
     # PCA: compute once from first frame, apply consistently to all
     if config.auto_orient:
-        vt = _pca_matrix(np.array(vib_frames[0]["positions"]))
+        vt = pca_matrix(np.array(vib_frames[0]["positions"]))
         vib_frames = _orient_frames(vib_frames, vt)
         _orient_graph(ts_graph, vt)
 
     n_vib = len(vib_frames)
     rotations = max(1, round(n_frames / n_vib)) if n_frames is not None else 3
     total = n_vib * rotations
+    if n_frames is not None and total != n_frames:
+        logger.info("Rounded --rot-frames %d -> %d (%d vib x %d rotations)", n_frames, total, n_vib, rotations)
+
+    # Cycle vibration frames for the full rotation
+    all_frames = [vib_frames[i % n_vib] for i in range(total)]
 
     # Use first frame positions for bounding sphere
     pos0 = np.array(vib_frames[0]["positions"])
     rot_cfg = _rotation_config(pos0, config)
 
     axis_vec, axis_sign = _rotation_axis(axis)
-    step = 360.0 / total
-    logger.info("Rendering vibration+rotation GIF (%d vib x %d = %d frames, axis=%s)", n_vib, rotations, total, axis)
-    pngs = []
-    for frame_idx in range(total):
-        # Set vibration positions (cycling)
-        vib_pos = vib_frames[frame_idx % n_vib]["positions"]
-        for i, (x, y, z) in enumerate(vib_pos):
-            ts_graph.nodes[i]["position"] = (float(x), float(y), float(z))
-
-        # Apply axis-angle rotation (clean single-axis, not Euler screw)
-        apply_axis_angle_rotation(ts_graph, axis_vec, axis_sign * step * frame_idx)
-
-        svg = render_svg(ts_graph, rot_cfg, _log=False)
-        pngs.append(_svg_to_png(svg, config.canvas_size))
-        _progress(frame_idx + 1, total)
-
+    logger.info(
+        "Rendering vibration+rotation GIF (%d vib x %d rot = %d frames, axis=%s)", n_vib, rotations, total, axis
+    )
+    pngs = _render_frames(
+        ts_graph, all_frames, rot_cfg, fixed_ncis=fixed_ncis, rotation_axis=axis_vec, rotation_sign=axis_sign
+    )
     _stitch_gif(pngs, output, fps)
     logger.info("Wrote %s", output)
 
@@ -267,22 +278,22 @@ def render_rotation_gif(
     """
     from xyzrender.io import apply_axis_angle_rotation
 
-    n = graph.number_of_nodes()
+    nodes = list(graph.nodes())
 
     # PCA: apply once to initial positions so GIF matches static SVG orientation
     if config.auto_orient:
-        _orient_graph(graph, _pca_matrix(np.array([graph.nodes[i]["position"] for i in range(n)])))
+        _orient_graph(graph, pca_matrix(np.array([graph.nodes[n]["position"] for n in nodes])))
 
-    original_positions = [graph.nodes[i]["position"] for i in range(n)]
-    rot_cfg = _rotation_config(np.array(original_positions), config)
+    original_positions = {n: graph.nodes[n]["position"] for n in nodes}
+    rot_cfg = _rotation_config(np.array(list(original_positions.values())), config)
 
     axis_vec, axis_sign = _rotation_axis(axis)
     step = 360.0 / n_frames
     logger.info("Rendering rotation GIF (%d frames, axis=%s)", n_frames, axis)
     pngs = []
     for frame_idx in range(n_frames):
-        for i in range(n):
-            graph.nodes[i]["position"] = original_positions[i]
+        for n in nodes:
+            graph.nodes[n]["position"] = original_positions[n]
 
         apply_axis_angle_rotation(graph, axis_vec, axis_sign * step * frame_idx)
 
@@ -290,8 +301,8 @@ def render_rotation_gif(
         pngs.append(_svg_to_png(svg, config.canvas_size))
         _progress(frame_idx + 1, n_frames)
 
-    for i in range(n):
-        graph.nodes[i]["position"] = original_positions[i]
+    for n in nodes:
+        graph.nodes[n]["position"] = original_positions[n]
 
     _stitch_gif(pngs, output, fps)
     logger.info("Wrote %s", output)
@@ -306,12 +317,18 @@ def render_trajectory_gif(
     multiplicity: int | None = None,
     fps: int = 10,
     reference_graph: nx.Graph | None = None,
+    detect_nci: bool = False,
+    axis: str | None = None,
 ) -> None:
     """Render optimization/trajectory path as an animated GIF.
 
     Builds the molecular graph once from the last frame (optimized geometry)
     to get correct bond orders, then updates positions per frame.
     If ``reference_graph`` is provided, all frames are rotated to match.
+    If ``detect_nci`` is True, NCI interactions are re-detected per frame
+    using xyzgraph's NCIAnalyzer (topology built once, geometry per frame).
+    If ``axis`` is provided, the molecule rotates 360° around that axis
+    over the course of the trajectory.
     """
     from xyzgraph import build_graph
 
@@ -328,6 +345,13 @@ def render_trajectory_gif(
                     if attr in d:
                         graph[i][j][attr] = d[attr]
 
+    # Build NCI analyzer once from topology, detect per frame later
+    nci_analyzer = None
+    if detect_nci:
+        from xyzgraph.nci import NCIAnalyzer
+
+        nci_analyzer = NCIAnalyzer(graph)
+
     # Apply viewer rotation if reference orientation was given
     if reference_graph is not None:
         logger.debug("Applying Kabsch rotation from viewer orientation")
@@ -338,13 +362,23 @@ def render_trajectory_gif(
     if config.auto_orient:
         import copy
 
-        vt = _pca_matrix(np.array(frames[0]["positions"]))
+        vt = pca_matrix(np.array(frames[0]["positions"]))
         frames = _orient_frames(frames, vt)
         config = copy.copy(config)
         config.auto_orient = False
 
-    logger.info("Rendering trajectory GIF (%d frames)", len(frames))
-    pngs = _render_frames(graph, frames, config)
+    # Fixed viewport for rotation
+    axis_vec = None
+    axis_sign = 1.0
+    if axis:
+        pos0 = np.array(frames[0]["positions"])
+        config = _rotation_config(pos0, config)
+        axis_vec, axis_sign = _rotation_axis(axis)
+
+    logger.info("Rendering trajectory GIF (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
+    pngs = _render_frames(
+        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign
+    )
     _stitch_gif(pngs, output, fps)
     logger.info("Wrote %s", output)
 
@@ -396,16 +430,52 @@ def _rotate_frames(frames: list[dict], rot: np.ndarray) -> list[dict]:
     return rotated
 
 
-def _render_frames(graph: nx.Graph, frames: list[dict], config: RenderConfig) -> list[bytes]:
-    """Render each trajectory frame to PNG, keeping graph topology fixed."""
+def _render_frames(
+    graph: nx.Graph,
+    frames: list[dict],
+    config: RenderConfig,
+    *,
+    nci_analyzer: NCIAnalyzer | None = None,
+    fixed_ncis: list | None = None,
+    rotation_axis: np.ndarray | None = None,
+    rotation_sign: float = 1.0,
+) -> list[bytes]:
+    """Render each trajectory frame to PNG, keeping graph topology fixed.
+
+    If *nci_analyzer* is provided, NCI interactions are re-detected per
+    frame and the graph is decorated with the frame-specific NCI edges.
+    If *fixed_ncis* is provided, the same NCI set is applied to every frame
+    (centroids recomputed from current atom positions each frame).
+    If *rotation_axis* is provided, each frame is incrementally rotated
+    around that axis for a full 360° over all frames.
+    """
+    if nci_analyzer is not None or fixed_ncis is not None:
+        from xyzgraph.nci import build_nci_graph
+    if rotation_axis is not None:
+        from xyzrender.io import apply_axis_angle_rotation
+
+    total = len(frames)
+    step = 360.0 / total if rotation_axis is not None else 0
     pngs = []
     for idx, frame in enumerate(frames):
         positions = frame["positions"]
         for i, (x, y, z) in enumerate(positions):
             graph.nodes[i]["position"] = (float(x), float(y), float(z))
-        svg = render_svg(graph, config, _log=False)
+
+        if nci_analyzer is not None:
+            ncis = nci_analyzer.detect(np.array(positions))
+            render_graph = build_nci_graph(graph, ncis)
+        elif fixed_ncis is not None:
+            render_graph = build_nci_graph(graph, fixed_ncis)
+        else:
+            render_graph = graph
+
+        if rotation_axis is not None:
+            apply_axis_angle_rotation(render_graph, rotation_axis, rotation_sign * step * idx)
+
+        svg = render_svg(render_graph, config, _log=False)
         pngs.append(_svg_to_png(svg, config.canvas_size))
-        _progress(idx + 1, len(frames))
+        _progress(idx + 1, total)
     return pngs
 
 

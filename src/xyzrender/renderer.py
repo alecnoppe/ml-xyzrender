@@ -14,15 +14,17 @@ logger = logging.getLogger(__name__)
 
 _RADIUS_SCALE = 0.075  # VdW → display radius
 _REF_SPAN = 6.0  # reference molecular span (Å) for proportional bond/stroke scaling
+_CENTROID_VDW = 0.5  # VdW radius (Å) for NCI pi-system centroid dummy nodes
 
 
 def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) -> str:
     """Render molecular graph to SVG string."""
     cfg = config or RenderConfig()
-    n = graph.number_of_nodes()
-    symbols = [graph.nodes[i]["symbol"] for i in range(n)]
-    pos = np.array([graph.nodes[i]["position"] for i in range(n)], dtype=float)
-    a_nums = [DATA.s2n[s] for s in symbols]
+    node_ids = list(graph.nodes())
+    n = len(node_ids)
+    symbols = [graph.nodes[i]["symbol"] for i in node_ids]
+    pos = np.array([graph.nodes[i]["position"] for i in node_ids], dtype=float)
+    a_nums = [DATA.s2n.get(s, 0) for s in symbols]  # 0 for NCI centroid nodes ("*")
 
     if cfg.auto_orient and n > 1:
         # Collect TS bond pairs to prioritize in orientation
@@ -30,9 +32,16 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
         for i, j, d in graph.edges(data=True):
             if d.get("TS", False) or d.get("bond_type", "") == "TS":
                 ts_pairs.append((i, j))
-        pos = _pca_orient(pos, ts_pairs or None)
+        # Exclude NCI centroid dummy nodes from PCA fitting
+        atom_mask = np.array([s != "*" for s in symbols])
+        fit_mask = atom_mask if not atom_mask.all() else None
+        from xyzrender.utils import pca_orient
 
-    raw_vdw = np.array([DATA.vdw.get(s, 1.5) * (0.6 if s == "H" else 1.0) for s in symbols])
+        pos = pca_orient(pos, ts_pairs or None, fit_mask=fit_mask)
+
+    raw_vdw = np.array(
+        [_CENTROID_VDW if s == "*" else DATA.vdw.get(s, 1.5) * (0.6 if s == "H" else 1.0) for s in symbols]
+    )
     radii = raw_vdw * cfg.atom_scale * _RADIUS_SCALE
 
     # Use VdW radii for canvas fitting when VdW spheres are active
@@ -220,7 +229,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
             )
             return
         if style == BondStyle.DOTTED:
-            d, g = bw * 0.1, bw * 2.0
+            d, g = bw * 0.08, bw * 2
             svg.append(
                 f'  <line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
                 f'stroke="{color}" stroke-width="{bw:.1f}" stroke-linecap="round" stroke-dasharray="{d:.1f},{g:.1f}"/>'
@@ -292,12 +301,6 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _pca_orient(pos: np.ndarray, priority_pairs: list[tuple[int, int]] | None = None) -> np.ndarray:
-    from xyzrender.utils import pca_orient
-
-    return pca_orient(pos, priority_pairs=priority_pairs)
 
 
 def _fit_canvas(pos, radii, cfg):
