@@ -29,6 +29,11 @@ echo "=== QM output files ==="
 xyzrender "$DIR/bimp.out" -o "$OUT/bimp_qm.svg" 
 xyzrender "$DIR/mn-h2.log" -o "$OUT/mn-h2_qm.svg" --ts
 
+echo "=== TS and NCI options ==="
+xyzrender "$DIR/sn2.out" --ts-bond "1-2" -o "$OUT/sn2_ts_man.svg" 
+xyzrender "$DIR/sn2.out" --ts --hy -o "$OUT/sn2_ts.svg" 
+
+
 echo "=== GIF animations ==="
 xyzrender "$DIR/caffeine.xyz" -o "$OUT/caffeine_gif.svg" --gif-rot -go "$OUT/caffeine.gif"
 xyzrender "$DIR/caffeine.xyz" -o "$OUT/caffeine_xy.svg" --gif-rot xy -go "$OUT/caffeine_xy.gif"

@@ -125,6 +125,30 @@ xyzrender asparagine.xyz --hy --vdw "1-6" -o asparagine_vdw_partial.svg  # VdW s
 xyzrender asparagine.xyz --hy --vdw --config paton -o asparagine_vdw_paton.svg  # VdW spheres on all atoms
 ```
 
+### Transition states and NCI
+
+xyzrender uses [xyzgraph](https://github.com/aligfellow/xyzgraph) for molecular graph construction from Cartesian coordinates — determining bond connectivity, bond orders, and detecting aromatic rings and non-covalent interactions. It also provides element data (van der Waals radii, atomic numbers) used throughout rendering.
+
+Transition state analysis uses [graphRC](https://github.com/aligfellow/graphRC) for internal coordinate vibrational mode analysis. Given a QM output file (ORCA, Gaussian, etc.), graphRC identifies which bonds are forming or breaking at the transition state with `--ts`. These are rendered as dashed bonds. graphRC is also used to generate TS vibration frames for `--gif-ts` animations.
+
+| Auto TS | Manual TS bond |
+|------|----------------|
+| ![ts](examples/sn2_ts.svg) | ![ts](examples/sn2_ts_man.svg) |
+
+```bash
+xyzrender sn2.out --hy --ts -o sn2_ts.svg 
+xyzrender sn2.out --hy --ts-bond "1-2" -o sn2_ts_man.svg # only one of the TS bonds added
+```
+
+| Auto NCI | Manual NCI |
+|------|----------------|
+| ![automatic nci detections not implemented](examples/nci.svg) | ![nci](examples/nci_man.svg) |
+
+```bash
+xyzrender Hbond.xyz --nci -o nci.svg # NOT YET IMPLEMENTED
+xyzrender Hbond.xyz --nci-bond "8-9" -o nci_man.svg # only one of the TS bonds added
+```
+
 ### QM output files
 
 | ORCA | Gaussian (TS) |
@@ -155,6 +179,36 @@ xyzrender bimp.out --gif-trj --ts -go bimp_trj.gif                        # traj
 ```
 
 GIF defaults to `{input_basename}.gif`. Use `-go` to override.
+
+
+## Orientation
+
+Auto-orientation is on by default (largest variance along x-axis). Disabled automatically for stdin and interactive mode.
+
+```bash
+xyzrender molecule.xyz                         # auto-oriented
+xyzrender molecule.xyz --no-orient             # raw coordinates
+xyzrender molecule.xyz -I                      # interactive rotation via v viewer
+```
+
+### Interactive rotation (`-I`)
+
+The `-I` flag opens the molecule in the [v molecular viewer](https://github.com/briling/v)
+for interactive rotation. Rotate the molecule to the desired orientation, press
+`z` to output coordinates, then close the window with `q`. `xyzrender` captures the rotated
+coordinates and renders from those.
+
+When piping from v directly:
+
+```bash
+v molecule.xyz | xyzrender
+```
+
+Orient the molecule, press `z` to output reoriented coordinates, then `q` to close.
+
+This must be installed separately if this option is to be used. The executable should be in `~/bin/` for discovery. 
+
+*TODO: Look into cleaning up this integration.*
 
 ## Styling
 
@@ -218,58 +272,6 @@ xyzrender caffeine.xyz --config my_style.json
 ```
 
 The `colors` key maps element symbols to hex colors, overriding the default CPK palette.
-
-## Orientation
-
-Auto-orientation is on by default (largest variance along x-axis). Disabled automatically for stdin and interactive mode.
-
-```bash
-xyzrender molecule.xyz                         # auto-oriented
-xyzrender molecule.xyz --no-orient             # raw coordinates
-xyzrender molecule.xyz -I                      # interactive rotation via v viewer
-```
-
-### Interactive rotation (`-I`)
-
-The `-I` flag opens the molecule in the [v molecular viewer](https://github.com/briling/v)
-for interactive rotation. Rotate the molecule to the desired orientation, press
-`z` to output coordinates, then close the window with `q`. `xyzrender` captures the rotated
-coordinates and renders from those.
-
-When piping from v directly:
-
-```bash
-v molecule.xyz | xyzrender
-```
-
-Orient the molecule, press `z` to output reoriented coordinates, then `q` to close.
-
-This must be installed separately if this option is to be used. The executable should be in `~/bin/` for discovery. 
-
-*TODO: Look into cleaning up this integration.*
-
-## Transition states and NCI
-
-xyzrender uses [xyzgraph](https://github.com/aligfellow/xyzgraph) for molecular graph construction from Cartesian coordinates — determining bond connectivity, bond orders, and detecting aromatic rings and non-covalent interactions. It also provides element data (van der Waals radii, atomic numbers) used throughout rendering.
-
-Transition state analysis uses [graphRC](https://github.com/aligfellow/graphRC) for internal coordinate vibrational mode analysis. Given a QM output file (ORCA, Gaussian, etc.), graphRC identifies which bonds are forming or breaking at the transition state with `--ts`. These are rendered as dashed bonds. graphRC is also used to generate TS vibration frames for `--gif-ts` animations.
-
-```bash
-# Auto-detect TS bonds via graphRC (dashed bonds)
-xyzrender ts.out --ts
-
-# Manual TS bond specification (1-indexed atom pairs)
-xyzrender molecule.xyz --ts-bond "1-6,3-4"
-
-# Auto-detect non-covalent interactions via xyzgraph (dotted bonds)
-xyzrender complex.xyz --nci
-
-# Manual NCI bonds
-xyzrender complex.xyz --nci-bond "1-5,2-8"
-
-# Combined TS + NCI
-xyzrender ts.out --ts --nci
-```
 
 ## GIF animation
 
@@ -337,7 +339,7 @@ GitHub Actions runs lint, type-check, and tests on every push to `main` and ever
 
 ## Acknowledgements
 
-The SVG rendering in xyzrender is built on and heavily inspired by [xyz2svg](https://github.com/briling/xyz2svg) by [Ksenia Briling](https://github.com/briling) — the CPK colour scheme, core SVG atom/bond rendering logic, and overall approach originate from that project. The radial gradient (pseudo-3D) rendering was contributed to xyz2svg by [@iribirii](https://github.com/iribirii).
+The SVG rendering in xyzrender is built on and heavily inspired by [xyz2svg](https://github.com/briling/xyz2svg) by [Ksenia Briling @briling](https://github.com/briling) — the CPK colour scheme, core SVG atom/bond rendering logic, and overall approach originate from that project. The radial gradient (pseudo-3D) rendering was contributed to xyz2svg by [Iñigo Iribarren Aguirre @iribirii](https://github.com/iribirii).
 
 Key dependencies:
 
