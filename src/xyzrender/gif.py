@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from xyzrender.renderer import render_svg
-from xyzrender.utils import pca_matrix
+from xyzrender.utils import kabsch_rotation, pca_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -269,12 +269,16 @@ def render_rotation_gif(
     n_frames: int = 60,
     fps: int = 10,
     axis: str = "y",
+    mo_data: dict | None = None,
 ) -> None:
     """Render a rotation animation as a GIF.
 
     Rotates the molecule around the given axis over a full 360 degrees.
     Uses a fixed viewport (bounding sphere) so the molecule doesn't
     appear to zoom or shift during rotation.
+
+    If *mo_data* is provided (dict with cube_data, isovalue, colors, opacity),
+    MO contours are recomputed for each frame to match the rotation.
     """
     from xyzrender.io import apply_axis_angle_rotation
 
@@ -296,6 +300,9 @@ def render_rotation_gif(
             graph.nodes[n]["position"] = original_positions[n]
 
         apply_axis_angle_rotation(graph, axis_vec, axis_sign * step * frame_idx)
+
+        if mo_data is not None:
+            _recompute_mo(graph, rot_cfg, mo_data)
 
         svg = render_svg(graph, rot_cfg, _log=False)
         pngs.append(_svg_to_png(svg, config.canvas_size))
@@ -384,6 +391,64 @@ def render_trajectory_gif(
     logger.info("Wrote %s", output)
 
 
+def _recompute_mo(graph: nx.Graph, config: RenderConfig, mo_data: dict) -> None:
+    """Recompute MO contours for the current graph orientation (Kabsch).
+
+    Caches 3D lobes, grid positions, and bounding sphere on first call so
+    they are reused across frames — only the rotation changes per frame.
+    The fixed bounding sphere prevents the 2D bin grid from sliding
+    between frames, which is the main cause of lobe wiggle in gif-rot.
+    """
+    from xyzrender.cube import _compute_grid_positions, _cube_corners_ang, _find_3d_lobes, build_mo_contours
+
+    cube_data = mo_data["cube_data"]
+
+    # Cache lobes and positions on first call
+    if "lobes_3d" not in mo_data:
+        mo_data["lobes_3d"] = _find_3d_lobes(cube_data.grid_data, mo_data["isovalue"])
+        mo_data["pos_flat_ang"] = _compute_grid_positions(cube_data)
+
+    orig = np.array([p for _, p in cube_data.atoms], dtype=float)
+    curr = np.array([graph.nodes[i]["position"] for i in graph.nodes()], dtype=float)
+    atom_centroid = orig.mean(axis=0)
+    target_centroid = curr.mean(axis=0)
+
+    # Cache bounding sphere: rotation-invariant bounds from cube corners.
+    # The max 3D distance from atom centroid to any corner is the worst-case
+    # 2D projection extent under any rotation, giving stable grid bounds.
+    if "fixed_bounds" not in mo_data:
+        corners = _cube_corners_ang(cube_data)
+        r_max = float(np.linalg.norm(corners - atom_centroid, axis=1).max())
+        pad = r_max * 0.01 + 1e-9
+        mo_data["_bounding_radius"] = r_max + pad
+
+    r = mo_data["_bounding_radius"]
+    fixed_bounds = (
+        float(target_centroid[0] - r),
+        float(target_centroid[0] + r),
+        float(target_centroid[1] - r),
+        float(target_centroid[1] + r),
+    )
+    mo_data["fixed_bounds"] = fixed_bounds
+
+    # Kabsch rotation from original cube positions to current graph positions
+    rot = kabsch_rotation(orig, curr)
+
+    config.mo_contours = build_mo_contours(
+        cube_data,
+        rot=rot,
+        isovalue=mo_data["isovalue"],
+        pos_color=mo_data["pos_color"],
+        neg_color=mo_data["neg_color"],
+        atom_centroid=atom_centroid,
+        target_centroid=target_centroid,
+        lobes_3d=mo_data["lobes_3d"],
+        pos_flat_ang=mo_data["pos_flat_ang"],
+        fixed_bounds=fixed_bounds,
+    )
+    config.mo_opacity = mo_data["mo_opacity"]
+
+
 def _rotation_config(positions: np.ndarray, config: RenderConfig) -> RenderConfig:
     """Create a config with fixed viewport sized to the bounding sphere."""
     import copy
@@ -403,21 +468,11 @@ def _rotation_config(positions: np.ndarray, config: RenderConfig) -> RenderConfi
 
 
 def _compute_rotation(original_graph: nx.Graph, rotated_graph: nx.Graph) -> np.ndarray:
-    """Compute 3x3 rotation matrix from original to rotated positions via SVD."""
+    """Compute 3x3 rotation matrix from original to rotated graph positions."""
     n = original_graph.number_of_nodes()
     orig = np.array([original_graph.nodes[i]["position"] for i in range(n)])
     rot = np.array([rotated_graph.nodes[i]["position"] for i in range(n)])
-
-    # Center both
-    orig_c = orig - orig.mean(axis=0)
-    rot_c = rot - rot.mean(axis=0)
-
-    # Kabsch: R = V @ U^T  where  H = orig^T @ rot = U S V^T
-    h = orig_c.T @ rot_c
-    u, _, vt = np.linalg.svd(h)
-    d = np.linalg.det(vt.T @ u.T)
-    sign = np.array([[1, 0, 0], [0, 1, 0], [0, 0, d]])  # correct for reflection
-    return vt.T @ sign @ u.T
+    return kabsch_rotation(orig, rot)
 
 
 def _rotate_frames(frames: list[dict], rot: np.ndarray) -> list[dict]:

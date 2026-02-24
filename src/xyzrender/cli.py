@@ -54,6 +54,31 @@ def _write_output(svg: str, output: str, cfg: RenderConfig, parser: argparse.Arg
         parser.error(f"Unsupported output format: .{ext} (use {supported})")
 
 
+def _parse_pairs(s: str) -> list[tuple[int, int]]:
+    """Parse '1-6,3-4' → [(0,5), (2,3)] (1-indexed input → 0-indexed)."""
+    if not s.strip():
+        return []
+    pairs = []
+    for part in s.split(","):
+        a, b = part.split("-")
+        pairs.append((int(a) - 1, int(b) - 1))
+    return pairs
+
+
+def _parse_indices(s: str) -> list[int]:
+    """Parse '1-20,25,30' → [0..19, 24, 29] (1-indexed input → 0-indexed)."""
+    if not s.strip():
+        return []
+    indices = []
+    for part in s.split(","):
+        if "-" in part:
+            a, b = part.split("-")
+            indices.extend(range(int(a) - 1, int(b)))
+        else:
+            indices.append(int(part) - 1)
+    return indices
+
+
 def main() -> None:
     """Entry point for the CLI."""
     p = argparse.ArgumentParser(
@@ -66,7 +91,7 @@ def main() -> None:
     io_g.add_argument("-o", "--output", help="Output file (.svg, .png, .pdf)")
     io_g.add_argument("-c", "--charge", type=int, default=0)
     io_g.add_argument("-m", "--multiplicity", type=int, default=None)
-    io_g.add_argument("--debug", action="store_true", help="Debug output")
+    io_g.add_argument("-d", "--debug", action="store_true", help="Debug output")
 
     # --- Styling ---
     style_g = p.add_argument_group("styling")
@@ -94,6 +119,16 @@ def main() -> None:
     )
     disp_g.add_argument("--fog", action=argparse.BooleanOptionalAction, default=None, help="Depth fog")
     disp_g.add_argument("--vdw", nargs="?", const="", default=None, help='VdW spheres (no args=all, or "1-20,25")')
+    disp_g.add_argument("--mo", action="store_true", default=False, help="Render MO lobes from .cube input")
+    disp_g.add_argument("--iso", type=float, default=0.05, help="MO isosurface threshold (default: 0.05)")
+    disp_g.add_argument("--mo-opacity", type=float, default=None, help="MO lobe opacity (default: 0.6)")
+    disp_g.add_argument(
+        "--mo-colors",
+        nargs=2,
+        default=None,
+        metavar=("POS", "NEG"),
+        help="MO lobe colors as hex (default: #2554A5 #851639)",
+    )
 
     # --- Orientation ---
     orient_g = p.add_argument_group("orientation")
@@ -130,29 +165,6 @@ def main() -> None:
     from xyzrender import configure_logging
 
     configure_logging(verbose=True, debug=args.debug)
-
-    def _parse_pairs(s: str) -> list[tuple[int, int]]:
-        """Parse '1-6,3-4' → [(0,5), (2,3)] (1-indexed input → 0-indexed)."""
-        if not s.strip():
-            return []
-        pairs = []
-        for part in s.split(","):
-            a, b = part.split("-")
-            pairs.append((int(a) - 1, int(b) - 1))
-        return pairs
-
-    def _parse_indices(s: str) -> list[int]:
-        """Parse '1-20,25,30' → [0..19, 24, 29] (1-indexed input → 0-indexed)."""
-        if not s.strip():
-            return []
-        indices = []
-        for part in s.split(","):
-            if "-" in part:
-                a, b = part.split("-")
-                indices.extend(range(int(a) - 1, int(b)))
-            else:
-                indices.append(int(part) - 1)
-        return indices
 
     # Build config: preset/JSON base + CLI overrides
     config_data = load_config(args.config or "default")
@@ -226,6 +238,18 @@ def main() -> None:
             "--gif-ts and --gif-trj are mutually exclusive. "
             "Use --gif-trj with --ts if you want TS bonds shown in the trj gif"
         )
+
+    is_cube = args.input and args.input.endswith(".cube")
+
+    # MO mutual exclusivity
+    if args.mo and args.vdw is not None:
+        p.error("--mo and --vdw are mutually exclusive")
+    if args.mo and args.gif_ts:
+        p.error("--mo and --gif-ts are mutually exclusive")
+    if args.mo and args.gif_trj:
+        p.error("--mo and --gif-trj are mutually exclusive")
+    if args.mo and not is_cube:
+        p.error("--mo requires a .cube input file")
     if wants_gif:
         gif_path = args.gif_output or f"{base}.gif"
         gif_ext = gif_path.rsplit(".", 1)[-1].lower()
@@ -233,8 +257,13 @@ def main() -> None:
             p.error(f"GIF output must have .gif extension, got: .{gif_ext}")
 
     # Load molecule (--gif-ts implies TS detection)
+    cube_data = None
     needs_ts = args.ts_detect or args.gif_ts
-    if needs_ts and args.input:
+    if is_cube:
+        from xyzrender.io import load_cube
+
+        graph, cube_data = load_cube(args.input, charge=args.charge, multiplicity=args.multiplicity, kekule=args.kekule)
+    elif needs_ts and args.input:
         graph, _ts_frames = load_ts_molecule(
             args.input,
             charge=args.charge,
@@ -256,6 +285,77 @@ def main() -> None:
     # Orientation
     if args.interactive:
         rotate_with_viewer(graph)
+
+    # MO: resolve colors once (used for both static render and gif-rot)
+    mo_colors = None
+    if args.mo:
+        mo_colors = args.mo_colors or [
+            config_data.get("mo_pos_color", "#2554A5"),
+            config_data.get("mo_neg_color", "#851639"),
+        ]
+
+    # MO contour computation (PCA must happen here so rot is available for the grid)
+    if args.mo and cube_data is not None:
+        from typing import cast
+
+        import numpy as np
+
+        from xyzrender.cube import CubeData, build_mo_contours
+        from xyzrender.utils import kabsch_rotation, pca_orient
+
+        assert mo_colors is not None  # set when args.mo is True
+        cube = cast("CubeData", cube_data)
+        rot = None
+        if cfg.auto_orient:
+            node_ids = list(graph.nodes())
+            pos = np.array([graph.nodes[i]["position"] for i in node_ids], dtype=float)
+            oriented, rot = pca_orient(pos, return_matrix=True)
+
+            # Tilt -45° around x-axis so orbital lobes above/below the
+            # molecular plane are clearly separated in the projection.
+            tilt = np.radians(-45)
+            rx = np.array(
+                [
+                    [1, 0, 0],
+                    [0, np.cos(tilt), -np.sin(tilt)],
+                    [0, np.sin(tilt), np.cos(tilt)],
+                ]
+            )
+            rot = rx @ rot
+            oriented = oriented @ rx.T
+
+            for idx, nid in enumerate(node_ids):
+                graph.nodes[nid]["position"] = tuple(oriented[idx].tolist())
+            cfg.auto_orient = False  # already applied, don't re-apply in render_svg
+
+        # If positions were modified (e.g. by interactive viewer) but PCA was not
+        # applied, compute R from the correspondence between original cube atom
+        # positions and current graph positions (Kabsch algorithm).
+        if rot is None:
+            orig = np.array([p for _, p in cube.atoms], dtype=float)
+            curr = np.array([graph.nodes[i]["position"] for i in graph.nodes()], dtype=float)
+            if not np.allclose(orig, curr, atol=1e-6):
+                rot = kabsch_rotation(orig, curr)
+
+        # Centroids for aligning the orbital grid with atom positions
+        atom_centroid = np.array([p for _, p in cube.atoms], dtype=float).mean(axis=0)
+        node_ids_mo = list(graph.nodes())
+        curr_centroid = np.array(
+            [graph.nodes[i]["position"] for i in node_ids_mo],
+            dtype=float,
+        ).mean(axis=0)
+
+        cfg.mo_contours = build_mo_contours(
+            cube,
+            rot=rot,
+            isovalue=args.iso,
+            pos_color=mo_colors[0],
+            neg_color=mo_colors[1],
+            atom_centroid=atom_centroid,
+            target_centroid=curr_centroid,
+        )
+        if args.mo_opacity is not None:
+            cfg.mo_opacity = args.mo_opacity
 
     # Render static output
     svg = render_svg(graph, cfg)
@@ -323,7 +423,25 @@ def main() -> None:
                 kekule=args.kekule,
             )
         elif args.gif_rot:
-            render_rotation_gif(graph, cfg, gif_path, n_frames=args.rot_frames, fps=args.gif_fps, axis=args.gif_rot)
+            mo_data = None
+            if args.mo and cube_data is not None:
+                assert mo_colors is not None  # set when args.mo is True
+                mo_data = {
+                    "cube_data": cube_data,
+                    "isovalue": args.iso,
+                    "pos_color": mo_colors[0],
+                    "neg_color": mo_colors[1],
+                    "mo_opacity": args.mo_opacity if args.mo_opacity is not None else cfg.mo_opacity,
+                }
+            render_rotation_gif(
+                graph,
+                cfg,
+                gif_path,
+                n_frames=args.rot_frames,
+                fps=args.gif_fps,
+                axis=args.gif_rot,
+                mo_data=mo_data,
+            )
 
 
 if __name__ == "__main__":

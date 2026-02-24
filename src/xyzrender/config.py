@@ -52,4 +52,10 @@ def build_render_config(config_data: dict, cli_overrides: dict) -> RenderConfig:
     if colors:
         merged["color_overrides"] = colors
 
+    # MO color keys are stored in config but not passed to RenderConfig directly
+    # (they're used at MO build time, not render time). Strip them to avoid
+    # TypeError from unexpected kwargs.
+    merged.pop("mo_pos_color", None)
+    merged.pop("mo_neg_color", None)
+
     return RenderConfig(**merged)
