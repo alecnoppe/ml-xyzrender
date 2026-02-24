@@ -31,13 +31,16 @@ def load_molecule(
 ) -> nx.Graph:
     """Read molecular structure file and build graph.
 
-    Supports .xyz natively; all other formats (ORCA .out, Gaussian .log,
-    Q-Chem, etc.) are parsed via cclib.  Bond orders are always determined
-    by xyzgraph.
+    Supports .xyz natively, .cube (Gaussian cube files), and all other
+    formats (ORCA .out, Gaussian .log, Q-Chem, etc.) via cclib.  Bond
+    orders are always determined by xyzgraph.
     """
     p = str(path)
     logger.info("Loading %s", p)
-    if p.endswith(".xyz"):
+    if p.endswith(".cube"):
+        logger.debug("Parsing as Gaussian cube file")
+        graph, _cube = load_cube(p, charge=charge, multiplicity=multiplicity, kekule=kekule)
+    elif p.endswith(".xyz"):
         logger.debug("Parsing as XYZ")
         graph = build_graph(read_xyz_file(p), charge=charge, multiplicity=multiplicity, kekule=kekule)
     else:
@@ -49,6 +52,26 @@ def load_molecule(
         graph = build_graph(atoms, charge=c, multiplicity=m, kekule=kekule)
     logger.info("Built graph: %d atoms, %d bonds", graph.number_of_nodes(), graph.number_of_edges())
     return graph
+
+
+def load_cube(
+    path: str | Path,
+    charge: int = 0,
+    multiplicity: int | None = None,
+    kekule: bool = False,
+) -> tuple[nx.Graph, object]:
+    """Load molecular structure and orbital data from a Gaussian cube file.
+
+    Returns both the molecular graph and the CubeData for orbital rendering.
+    """
+    from xyzrender.cube import parse_cube
+
+    cube = parse_cube(path)
+    graph = build_graph(cube.atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+    logger.info(
+        "Cube graph: %d atoms, %d bonds, MO %s", graph.number_of_nodes(), graph.number_of_edges(), cube.mo_index
+    )
+    return graph, cube
 
 
 def detect_nci(graph: nx.Graph) -> nx.Graph:

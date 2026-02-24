@@ -71,3 +71,10 @@ def test_colors_mapped_to_color_overrides():
 def test_colors_absent_gives_none():
     cfg = build_render_config({}, {})
     assert cfg.color_overrides is None
+
+
+def test_named_colors_resolved_to_hex():
+    data = {"colors": {"C": "silver", "N": "slateblue"}, "background": "ivory"}
+    cfg = build_render_config(data, {})
+    assert cfg.color_overrides == {"C": "#c0c0c0", "N": "#6a5acd"}
+    assert cfg.background == "#fffff0"

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from xyzrender.renderer import render_svg
-from xyzrender.utils import pca_matrix
+from xyzrender.utils import kabsch_rotation, pca_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -269,12 +269,16 @@ def render_rotation_gif(
     n_frames: int = 60,
     fps: int = 10,
     axis: str = "y",
+    mo_data: dict | None = None,
 ) -> None:
     """Render a rotation animation as a GIF.
 
     Rotates the molecule around the given axis over a full 360 degrees.
     Uses a fixed viewport (bounding sphere) so the molecule doesn't
     appear to zoom or shift during rotation.
+
+    If *mo_data* is provided (dict with cube_data, isovalue, colors, opacity),
+    MO contours are recomputed for each frame to match the rotation.
     """
     from xyzrender.io import apply_axis_angle_rotation
 
@@ -296,6 +300,11 @@ def render_rotation_gif(
             graph.nodes[n]["position"] = original_positions[n]
 
         apply_axis_angle_rotation(graph, axis_vec, axis_sign * step * frame_idx)
+
+        if mo_data is not None:
+            from xyzrender.mo import recompute_mo
+
+            recompute_mo(graph, rot_cfg, mo_data)
 
         svg = render_svg(graph, rot_cfg, _log=False)
         pngs.append(_svg_to_png(svg, config.canvas_size))
@@ -403,21 +412,11 @@ def _rotation_config(positions: np.ndarray, config: RenderConfig) -> RenderConfi
 
 
 def _compute_rotation(original_graph: nx.Graph, rotated_graph: nx.Graph) -> np.ndarray:
-    """Compute 3x3 rotation matrix from original to rotated positions via SVD."""
+    """Compute 3x3 rotation matrix from original to rotated graph positions."""
     n = original_graph.number_of_nodes()
     orig = np.array([original_graph.nodes[i]["position"] for i in range(n)])
     rot = np.array([rotated_graph.nodes[i]["position"] for i in range(n)])
-
-    # Center both
-    orig_c = orig - orig.mean(axis=0)
-    rot_c = rot - rot.mean(axis=0)
-
-    # Kabsch: R = V @ U^T  where  H = orig^T @ rot = U S V^T
-    h = orig_c.T @ rot_c
-    u, _, vt = np.linalg.svd(h)
-    d = np.linalg.det(vt.T @ u.T)
-    sign = np.array([[1, 0, 0], [0, 1, 0], [0, 0, d]])  # correct for reflection
-    return vt.T @ sign @ u.T
+    return kabsch_rotation(orig, rot)
 
 
 def _rotate_frames(frames: list[dict], rot: np.ndarray) -> list[dict]:

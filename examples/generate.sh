@@ -37,6 +37,12 @@ xyzrender "$DIR/Hbond.xyz" --hy --nci-bond "8-9" -o "$OUT/nci_man.svg"  # specif
 xyzrender "$DIR/Hbond.xyz" --hy --nci -o "$OUT/nci.svg"  # specific NCI bond only
 xyzrender "$DIR/bimp.out" --nci -o "$OUT/bimp_nci.svg"  # all NCI bonds
 
+echo "=== Molecular orbitals ==="
+xyzrender "$DIR/caffeine_homo.cube" --mo -o "$OUT/caffeine_homo.svg"
+xyzrender "$DIR/caffeine_lumo.cube" --mo --mo-colour maroon teal -o "$OUT/caffeine_lumo.svg"
+xyzrender "$DIR/caffeine_homo.cube" --mo --hy --iso 0.03 -o "$OUT/caffeine_homo_iso_hy.svg"
+xyzrender "$DIR/caffeine_homo.cube" --mo -o "$OUT/caffeine_homo_rot.svg" --gif-rot -go "$OUT/caffeine_homo.gif"
+
 echo "=== GIF animations ==="
 xyzrender "$DIR/caffeine.xyz" -o "$OUT/caffeine_gif.svg" --gif-rot -go "$OUT/caffeine.gif"
 xyzrender "$DIR/caffeine.xyz" -o "$OUT/caffeine_xy.svg" --gif-rot xy -go "$OUT/caffeine_xy.gif"

@@ -1,8 +1,8 @@
-"""Tests for Color arithmetic."""
+"""Tests for Color arithmetic and resolve_color."""
 
 import pytest
 
-from xyzrender.types import Color
+from xyzrender.types import Color, resolve_color
 
 
 def test_hex_roundtrip():
@@ -18,3 +18,26 @@ def test_frozen():
     c = Color(1, 2, 3)
     with pytest.raises(AttributeError):
         c.r = 5  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    ("input_color", "expected"),
+    [
+        ("#FF0000", "#ff0000"),
+        ("2554A5", "#2554a5"),
+        ("red", "#ff0000"),
+        ("SteelBlue", "#4682b4"),
+        ("  cornflowerblue  ", "#6495ed"),
+    ],
+)
+def test_resolve_color(input_color, expected):
+    assert resolve_color(input_color) == expected
+
+
+def test_resolve_color_unknown_raises():
+    with pytest.raises(ValueError, match="Unknown color"):
+        resolve_color("notarealcolor")
+
+
+def test_from_str_named():
+    assert Color.from_str("steelblue") == Color(70, 130, 180)

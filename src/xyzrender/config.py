@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-from xyzrender.types import RenderConfig
+from xyzrender.types import RenderConfig, resolve_color
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def load_config(name_or_path: str) -> dict:
         logger.debug("Loading config file: %s", path)
         return json.loads(path.read_text())
 
-    available = ", ".join(p.stem for p in sorted(_PRESET_DIR.glob("*.json")))
+    available = ", ".join(p.stem for p in sorted(_PRESET_DIR.glob("*.json")) if p.stem != "named_colors")
     msg = f"Config not found: {name_or_path!r} (built-in presets: {available})"
     raise FileNotFoundError(msg)
 
@@ -50,6 +50,17 @@ def build_render_config(config_data: dict, cli_overrides: dict) -> RenderConfig:
     # "colors" key in JSON maps to color_overrides on RenderConfig
     colors = merged.pop("colors", None)
     if colors:
-        merged["color_overrides"] = colors
+        merged["color_overrides"] = {sym: resolve_color(c) for sym, c in colors.items()}
+
+    # MO color keys are stored in config but not passed to RenderConfig directly
+    # (they're used at MO build time, not render time). Strip them to avoid
+    # TypeError from unexpected kwargs.
+    merged.pop("mo_pos_color", None)
+    merged.pop("mo_neg_color", None)
+
+    # Resolve any named colors to hex for fields that downstream code parses as hex
+    for key in ("background", "bond_color", "atom_stroke_color"):
+        if key in merged:
+            merged[key] = resolve_color(merged[key])
 
     return RenderConfig(**merged)

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from xyzrender.mo import MOContours
 
 
 class BondStyle(Enum):
@@ -65,6 +69,17 @@ class Color:
         return cls(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
     @classmethod
+    def from_str(cls, color: str) -> Color:
+        """From hex (``'#ff0000'``) or CSS4 name (``'red'``).
+
+        Examples
+        --------
+        >>> Color.from_str("#ff0000")
+        Color(r=255, g=0, b=0)
+        """
+        return cls.from_hex(resolve_color(color))
+
+    @classmethod
     def from_int(cls, value: int) -> Color:
         """From ``0xff0000``.
 
@@ -74,6 +89,48 @@ class Color:
         Color(r=255, g=0, b=0)
         """
         return cls((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
+
+
+_NAMED_COLORS: dict[str, str] | None = None
+
+
+def _load_named_colors() -> dict[str, str]:
+    """Load CSS4 named colors from bundled JSON (cached on first call)."""
+    global _NAMED_COLORS  # noqa: PLW0603
+    if _NAMED_COLORS is None:
+        import json
+        from pathlib import Path
+
+        path = Path(__file__).parent / "presets" / "named_colors.json"
+        with path.open() as f:
+            _NAMED_COLORS = json.load(f)
+    return _NAMED_COLORS
+
+
+def resolve_color(color: str) -> str:
+    """Resolve hex (``'#FF0000'``) or CSS4 name (``'red'``) to ``'#rrggbb'``.
+
+    Examples
+    --------
+    >>> resolve_color("#FF0000")
+    '#ff0000'
+    >>> resolve_color("FF0000")
+    '#ff0000'
+    >>> resolve_color("red")
+    '#ff0000'
+    """
+    s = color.strip()
+    h = s.lstrip("#")
+    # Fast path: already a 6-digit hex string
+    if len(h) == 6 and all(c in "0123456789abcdefABCDEF" for c in h):
+        return f"#{h.lower()}"
+    # Named color lookup
+    named = _load_named_colors()
+    key = s.lower()
+    if key in named:
+        return named[key]
+    msg = f"Unknown color {color!r}. Use hex (#rrggbb) or a named color (e.g. 'steelblue')."
+    raise ValueError(msg)
 
 
 @dataclass
@@ -107,3 +164,6 @@ class RenderConfig:
     fixed_span: float | None = None  # fixed viewport span (disables auto-fit)
     fixed_center: tuple[float, float] | None = None  # fixed XY center (disables auto-center)
     color_overrides: dict[str, str] | None = None  # element symbol → hex color
+    # MO rendering
+    mo_contours: MOContours | None = None
+    mo_opacity: float = 0.6

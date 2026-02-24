@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from xyzrender.utils import pca_matrix, pca_orient
+from xyzrender.utils import kabsch_rotation, pca_matrix, pca_orient
 
 
 def test_pca_orient_shape():
@@ -40,3 +40,21 @@ def test_pca_matrix_orthogonal():
     vt = pca_matrix(pos)
     # Vt should be orthogonal: Vt @ Vt.T = I
     assert np.allclose(vt @ vt.T, np.eye(3), atol=1e-10)
+
+
+def test_kabsch_recovers_rotation():
+    """Apply a known 90-degree rotation and verify Kabsch recovers it."""
+    rng = np.random.default_rng(42)
+    original = rng.standard_normal((8, 3))
+    # 90-degree rotation around z-axis
+    theta = np.pi / 2
+    expected = np.array([[np.cos(theta), -np.sin(theta), 0], [np.sin(theta), np.cos(theta), 0], [0, 0, 1]])
+    target = (original - original.mean(axis=0)) @ expected.T + original.mean(axis=0)
+    recovered = kabsch_rotation(original, target)
+    assert np.allclose(recovered, expected, atol=1e-10)
+
+
+def test_kabsch_identity():
+    pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
+    rot = kabsch_rotation(pos, pos)
+    assert np.allclose(rot, np.eye(3), atol=1e-10)

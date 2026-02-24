@@ -8,6 +8,7 @@ import numpy as np
 from xyzgraph import DATA
 
 from xyzrender.colors import _FOG_NEAR, WHITE, blend_fog, get_color, get_gradient_colors
+from xyzrender.mo import classify_mo_lobes, mo_back_lobes_svg, mo_front_lobes_svg, mo_gradient_defs_svg
 from xyzrender.types import BondStyle, RenderConfig
 
 logger = logging.getLogger(__name__)
@@ -196,6 +197,20 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
                 )
         svg.append("  </defs>")
 
+    # MO lobe gradient defs + front/back classification
+    mo_is_front = None
+    if cfg.mo_contours is not None:
+        mo = cfg.mo_contours
+        mo_is_front = classify_mo_lobes(mo.lobes, float(pos[:, 2].mean()))
+        svg.append("  <defs>")
+        svg.extend(mo_gradient_defs_svg(mo))
+        svg.append("  </defs>")
+
+    # --- Back MO orbital lobes (behind molecule) — flat faded fill ---
+    if cfg.mo_contours is not None:
+        assert mo_is_front is not None
+        svg.extend(mo_back_lobes_svg(cfg.mo_contours, mo_is_front, cfg.mo_opacity, scale, cx, cy, canvas_w, canvas_h))
+
     # Interleaved z-order: for each atom, render it then its bonds to deeper atoms
     gap = cfg.bond_gap * bw  # pixel gap scales with bond width
 
@@ -291,6 +306,11 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
             bo, style = bonds[(ai, aj)]
             add_bond(ai, aj, bo, style)
 
+    # --- Front MO orbital lobes (on top of molecule) ---
+    if cfg.mo_contours is not None:
+        assert mo_is_front is not None
+        svg.extend(mo_front_lobes_svg(cfg.mo_contours, mo_is_front, cfg.mo_opacity, scale, cx, cy, canvas_w, canvas_h))
+
     # VdW surface overlay — on top of molecule, group opacity for proper occlusion
     if vdw_set is not None:
         svg.append(f'  <g opacity="{cfg.vdw_opacity}">')
@@ -310,11 +330,15 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
 # ---------------------------------------------------------------------------
 
 
-def _fit_canvas(pos, radii, cfg):
+def _fit_canvas(pos, radii, cfg, extra_lo=None, extra_hi=None):
     """Scale + center so molecule fits canvas with tight aspect ratio."""
     pad = radii.max() if len(radii) else 0
     lo = pos[:, :2].min(axis=0) - pad
     hi = pos[:, :2].max(axis=0) + pad
+    if extra_lo is not None:
+        lo = np.minimum(lo, extra_lo)
+    if extra_hi is not None:
+        hi = np.maximum(hi, extra_hi)
     spans = hi - lo  # [x_span, y_span]
     if cfg.fixed_span is not None:
         max_span = cfg.fixed_span

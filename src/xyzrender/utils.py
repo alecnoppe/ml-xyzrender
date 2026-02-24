@@ -2,7 +2,31 @@
 
 from __future__ import annotations
 
+from typing import Literal, overload
+
 import numpy as np
+
+
+@overload
+def pca_orient(
+    pos: np.ndarray,
+    priority_pairs: list[tuple[int, int]] | None = ...,
+    priority_weight: float = ...,
+    *,
+    fit_mask: np.ndarray | None = ...,
+    return_matrix: Literal[False] = ...,
+) -> np.ndarray: ...
+
+
+@overload
+def pca_orient(
+    pos: np.ndarray,
+    priority_pairs: list[tuple[int, int]] | None = ...,
+    priority_weight: float = ...,
+    *,
+    fit_mask: np.ndarray | None = ...,
+    return_matrix: Literal[True] = ...,
+) -> tuple[np.ndarray, np.ndarray]: ...
 
 
 def pca_orient(
@@ -11,7 +35,8 @@ def pca_orient(
     priority_weight: float = 5.0,
     *,
     fit_mask: np.ndarray | None = None,
-) -> np.ndarray:
+    return_matrix: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Align molecule: largest variance along x, then y, smallest along z (depth).
 
     If *priority_pairs* are given (e.g. TS bonds), those atom positions are
@@ -34,7 +59,8 @@ def pca_orient(
     else:
         c_weighted = c_fit
     _, _, vt = np.linalg.svd(c_weighted, full_matrices=False)
-    oriented = c @ vt.T  # apply rotation to ALL positions
+    rot = vt  # cumulative rotation matrix
+    oriented = c @ rot.T  # apply rotation to ALL positions
 
     # For TS bonds: rotate around z to align TS bond vectors along x (horizontal)
     if priority_pairs:
@@ -45,8 +71,11 @@ def pca_orient(
             theta = -np.arctan2(avg_dir[1], avg_dir[0])
             ct, st = np.cos(theta), np.sin(theta)
             rz = np.array([[ct, -st, 0], [st, ct, 0], [0, 0, 1]])
+            rot = rz @ rot
             oriented = oriented @ rz.T
 
+    if return_matrix:
+        return oriented, rot
     return oriented
 
 
@@ -55,3 +84,21 @@ def pca_matrix(pos: np.ndarray) -> np.ndarray:
     c = pos - pos.mean(axis=0)
     _, _, vt = np.linalg.svd(c, full_matrices=False)
     return vt
+
+
+def kabsch_rotation(original: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Compute optimal rotation matrix from *original* to *target* positions.
+
+    Both arrays must have shape ``(N, 3)``.  They are centered internally
+    (centroids subtracted) before computing the rotation via SVD.
+    Handles reflections by correcting the sign of the determinant.
+
+    Returns the 3x3 rotation matrix R such that ``(original - centroid) @ R.T``
+    best aligns with ``(target - centroid)``.
+    """
+    oc = original - original.mean(axis=0)
+    tc = target - target.mean(axis=0)
+    h = oc.T @ tc
+    u, _, vt = np.linalg.svd(h)
+    d = np.linalg.det(vt.T @ u.T)
+    return vt.T @ np.diag([1.0, 1.0, np.sign(d)]) @ u.T
