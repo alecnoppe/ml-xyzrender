@@ -1,0 +1,26 @@
+{
+  "canvas_size": 800,
+  "atom_scale": 2.5,
+  "bond_width": 20,
+  "bond_color": "#AAAAAA",
+  "atom_stroke_color":"#dddddd",
+  "atom_stroke_width": 8,
+  "gradient": false,
+  "gradient_strength": 1,
+  "fog": true,
+  "fog_strength": 0.9,
+  "bond_orders": true,
+  "title_color":"#dddddd",
+  "background": "#000000",
+  "fog_color": "#000000",
+  "vdw_opacity": 0.25,
+  "vdw_scale": 1.0,
+  "vdw_gradient_strength": 1.0,
+  "mo_opacity": 0.6,
+  "mo_pos_color": "#2554A5",
+  "mo_neg_color": "#851639",
+  "colors": {
+    "C": "#888888",
+    "O": "#DC2727"
+  }
+}

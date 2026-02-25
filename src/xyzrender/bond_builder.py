@@ -65,20 +65,36 @@ ORDER1_MARGIN, ORDER2_MARGIN, ORDER3_MARGIN = 10, 5, 3
 
 
 ATOMIC_NUM_LOOKUP = {
-    "H":1,
-    "C":6,
-    "N":7,
-    "O":8,
-    "F":9
+    "H": 1,
+    "B": 5,
+    "C": 6,
+    "N": 7,
+    "O": 8,
+    "F": 9,
+    "Si": 14,
+    "P": 15,
+    "S": 16,
+    "Cl": 17,
+    "As": 33,
+    "Br": 35,
+    "I": 53
 }
 
 
 VALENCE_LOOKUP = {
-    "H":1,
-    "C":4,
-    "N":3,
-    "O":2,
-    "F":1
+    "H": 1,
+    "B": 3,
+    "C": 4,
+    "N": 3,
+    "O": 2,
+    "F": 1,
+    "Si": 4,
+    "P": 3,   # often 3 or 5; 3 is typical for valence models
+    "S": 2,   # often 2, 4, 6; 2 is typical for valence models
+    "Cl": 1,
+    "As": 3,  # often 3 or 5
+    "Br": 1,
+    "I": 1
 }
 
 
