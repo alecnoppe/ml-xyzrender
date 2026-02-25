@@ -3,10 +3,10 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "xyzrender"
-version = "0.1.4"
+name = "ml-xyzrender"
+version = "0.0.1"
 description = "Publication-quality molecular graphics from the command line."
-authors = [{name = "Dr Alister S. Goodfellow"}]
+authors = [{name = "Dr Alister S. Goodfellow"}, {name = "Alec Noppe}]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 [project.urls]
-homepage = "https://github.com/aligfellow/xyzrender"
+homepage = "https://github.com/alecnoppe/ml-xyzrender"
 
 [project.scripts]
 xyzrender = "xyzrender.cli:main"
