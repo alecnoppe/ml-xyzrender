@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from xyzrender.config import build_render_config, load_config
+from xyzrender.cartoon import plot_cartoon
 
 if TYPE_CHECKING:
     from xyzrender.cube import CubeData
@@ -165,9 +166,14 @@ def main() -> None:
     ml_g = p.add_argument_group("Machine Learning Visualization Arguments")
     ml_g.add_argument("--graph-builder", "-gb", type=str, default="distance-based", help="Which graph-builder to use \
         when constructing the graph from the .xyz file.")
-    ml_g.add_argument("--diffusion-gif", action="store_true", help="Whether to plot a diffusion-trajectory gif.")
-    ml_g.add_argument("--diffusion-cartoon", action="store_true", help="Whether to plot a diffusion-trajectory cartoon.")
-    
+    ml_g.add_argument("--cartoon", action="store_true", help="Whether to plot a (diffusion)-trajectory cartoon.")
+    ml_g.add_argument("--cartoon-subsample-frames", type=int, default=5, help="Number of frames to plot in the cartoon. \
+        This will plot the first frame, the last frame and n-2 equidistant frames in between.")
+    ml_g.add_argument("--cartoon-titles", type=str, nargs="+", default=None, help="List of titles for each \
+        subfigure in the cartoon.")
+    ml_g.add_argument("--fog-color", type=str, default=None, help="Color for the fog.")
+    ml_g.add_argument("--title", type=str, default=None, help="Title for the plot.")
+    ml_g.add_argument("--title-color", type=str, default=None, help="Color for the title.")
     args = p.parse_args()
 
     from xyzrender import configure_logging
@@ -189,6 +195,9 @@ def main() -> None:
         ("background", "background"),
         ("vdw_opacity", "vdw_opacity"),
         ("vdw_scale", "vdw_scale"),
+        ("fog_color", "fog_color"),
+        ("title", "title"),
+        ("title_color", "title_color") # TODO: CHECK THAT ALL 'NEW' ARGUMENTS CAN BE MANIPULATED HERE.
     ]:
         val = getattr(args, attr)
         if val is not None:
@@ -203,7 +212,6 @@ def main() -> None:
         cli_overrides["bond_orders"] = args.bo
 
     cfg = build_render_config(config_data, cli_overrides)
-
     # Per-molecule settings (always from CLI)
     if args.no_hy:
         cfg.hide_h = True  # --no-hy: hide all H
@@ -453,7 +461,28 @@ def main() -> None:
                 axis=args.gif_rot,
                 mo_data=mo_data,
             )
-
+            
+    if args.cartoon:
+        print(args.cartoon_titles, args.cartoon_subsample_frames)
+        if not args.input:
+            p.error("--cartoon requires an input file")
+        frames = load_trajectory_frames(args.input)
+        if len(frames) < 2:
+            p.error("--cartoon requires multi-frame input")
+        plot_cartoon(
+            frames,
+            args.cartoon_subsample_frames,
+            cfg,
+            args.output,
+            graph_builder=args.graph_builder,
+            charge=args.charge,
+            multiplicity=args.multiplicity,
+            cartoon_titles=args.cartoon_titles,
+            reference_graph=graph,
+            detect_nci=args.nci,
+            axis=args.gif_rot or None,
+            kekule=args.kekule,
+        )
 
 if __name__ == "__main__":
     main()

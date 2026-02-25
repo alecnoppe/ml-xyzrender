@@ -8,9 +8,11 @@ from io import BytesIO
 from typing import TYPE_CHECKING
 
 import numpy as np
+from xyzgraph import build_graph
 
 from xyzrender.renderer import render_svg
 from xyzrender.utils import kabsch_rotation, pca_matrix
+from xyzrender.bond_builder import build_distance_based_graph
 
 logger = logging.getLogger(__name__)
 
@@ -329,8 +331,13 @@ def render_trajectory_gif(
     detect_nci: bool = False,
     axis: str | None = None,
     kekule: bool = False,
+    graph_builder: str = "distance-based"
 ) -> None:
     """Render optimization/trajectory path as an animated GIF.
+    
+    Args:
+        graph_builder: choose graph builder from `distance-based` and `default`.
+            NOTE: for QM9 `distance-based` is prefered.
 
     Builds the molecular graph once from the last frame (optimized geometry)
     to get correct bond orders, then updates positions per frame.
@@ -340,12 +347,17 @@ def render_trajectory_gif(
     If ``axis`` is provided, the molecule rotates 360° around that axis
     over the course of the trajectory.
     """
-    from xyzgraph import build_graph
 
     # Build graph from last frame (optimized geometry → correct bond orders)
     last = frames[-1]
     last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
-    graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+    match graph_builder:
+        case "distance-based":
+            graph = build_distance_based_graph(last_atoms)
+        case "default":
+            graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+        case _:
+            raise Exception(f"Options for graph_builder are `distance-based` or `default`, not {graph_builder}")
 
     # Copy TS/NCI edge attributes from reference graph
     if reference_graph is not None:

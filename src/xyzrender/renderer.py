@@ -9,7 +9,7 @@ from xyzgraph import DATA
 
 from xyzrender.colors import _FOG_NEAR, WHITE, blend_fog, get_color, get_gradient_colors
 from xyzrender.mo import classify_mo_lobes, mo_back_lobes_svg, mo_front_lobes_svg, mo_gradient_defs_svg
-from xyzrender.types import BondStyle, RenderConfig
+from xyzrender.types import BondStyle, RenderConfig, Color
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,8 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
 
     # Fog factors — normalized across depth range, with a dead-zone near the front
     fog_f = np.zeros(n)
-    fog_rgb = np.array([255, 255, 255])
+    fog_color = Color.from_hex(cfg.fog_color)
+    fog_rgb = np.array([fog_color.r, fog_color.g, fog_color.b])
     if cfg.fog:
         zr = max(pos[:, 2].max() - pos[:, 2].min(), 1e-6)
         depth = pos[:, 2].max() - pos[:, 2]  # distance from front atom
@@ -140,6 +141,17 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
     ]
     svg.append(f'  <rect width="100%" height="100%" fill="{cfg.background}"/>')
 
+    # Add title, if specified in the config
+    if cfg.title:
+        svg.append(
+            f'  <text x="{canvas_w/2:.1f}" y="{cfg.padding/2:.1f}" '
+            f'text-anchor="middle" dominant-baseline="hanging" '
+            f'font-size="{cfg.title_font_size}" '
+            f'font-family="{cfg.title_font_family}" '
+            f'fill="{cfg.title_color}">'
+            f'{cfg.title}</text>'
+        )
+
     use_grad = cfg.gradient
     if use_grad:
         svg.append("  <defs>")
@@ -150,7 +162,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
                     continue
                 t = min(fog_f[ai] ** 2 * 0.7, 0.70)
                 hi, lo = get_gradient_colors(colors[ai], cfg.gradient_strength)
-                hi, lo = hi.blend(WHITE, t), lo.blend(WHITE, t)
+                hi, lo = hi.blend(fog_color, t), lo.blend(fog_color, t)
                 fs = blend_fog(cfg.atom_stroke_color, fog_rgb, fog_f[ai])
                 r = radii[ai] * scale
                 sa = f' stroke="{fs}" stroke-width="{sw:.1f}"'

@@ -136,7 +136,6 @@ def resolve_color(color: str) -> str:
 @dataclass
 class RenderConfig:
     """Rendering settings."""
-
     canvas_size: int = 800
     padding: float = 40.0
     atom_scale: float = 1.0
@@ -167,3 +166,8 @@ class RenderConfig:
     # MO rendering
     mo_contours: MOContours | None = None
     mo_opacity: float = 0.6
+    title: str | None = None # title to include above the rendered molecule in the svg
+    title_font_size: float = 50
+    title_color: str = "#000000"
+    title_font_family: str = 'Roboto, sans-serif'
+    fog_color: str = "#ffffff"
