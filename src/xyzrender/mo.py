@@ -19,10 +19,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # --- Contour processing ---
-_UPSAMPLE_FACTOR = 3  # 80x80 -> 240x240 -- smooth enough for publication
-_BLUR_SIGMA = 0.8  # Gaussian sigma (in grid cells) before upsampling
-_MIN_LOBE_CELLS = 20  # discard 3D components smaller than this
-_MIN_LOOP_PERIMETER = 15.0  # grid units — discard tiny contour fragments
+# 3D lobe filtering (physical units — scales with cube grid spacing)
+_MIN_LOBE_VOLUME_BOHR3 = 0.1  # discard 3D orbital components smaller than this (Bohr^3)
+
+# 2D projected-grid properties (grid-cell units, not related to cube spacing)
+_UPSAMPLE_FACTOR = 3  # 80x80 -> 400x400 -- smooth enough for publication
+_BLUR_SIGMA = 0.8  # Gaussian sigma in 2D grid cells before upsampling
+_MIN_LOOP_PERIMETER = 15.0  # upsampled grid units — discard tiny contour fragments
 
 
 # ---------------------------------------------------------------------------
@@ -67,11 +70,19 @@ class MOContours:
 # ---------------------------------------------------------------------------
 
 
-def find_3d_lobes(grid_3d: np.ndarray, isovalue: float) -> list[Lobe3D]:
+def find_3d_lobes(grid_3d: np.ndarray, isovalue: float, steps: np.ndarray | None = None) -> list[Lobe3D]:
     """Find connected 3D orbital lobes at ±isovalue via BFS flood-fill."""
     shape = grid_3d.shape
     s1, s2 = shape[1] * shape[2], shape[2]
     lobes: list[Lobe3D] = []
+
+    # Derive cell count threshold from physical volume and voxel size
+    if steps is not None:
+        voxel_vol = abs(float(np.linalg.det(steps)))
+        min_cells = max(2, int(_MIN_LOBE_VOLUME_BOHR3 / voxel_vol + 0.5))
+    else:
+        min_cells = 5  # fallback for callers without cube metadata
+    logger.debug("Voxel volume: %.4g Bohr³, min lobe cells: %d", voxel_vol if steps is not None else 0.0, min_cells)
 
     for phase in ("pos", "neg"):
         mask = grid_3d >= isovalue if phase == "pos" else grid_3d <= -isovalue
@@ -97,8 +108,15 @@ def find_3d_lobes(grid_3d: np.ndarray, isovalue: float) -> list[Lobe3D]:
                             visited[ni, nj, nk] = True
                             queue.append((ni, nj, nk))
 
-            if len(component) >= _MIN_LOBE_CELLS:
+            if len(component) >= min_cells:
                 lobes.append(Lobe3D(flat_indices=np.array(component, dtype=np.intp), phase=phase))
+            else:
+                logger.debug(
+                    "Discarded %s component with %d voxels (< %d minimum)",
+                    phase,
+                    len(component),
+                    min_cells,
+                )
 
     logger.debug("Found %d 3D lobes at isovalue %.4g", len(lobes), isovalue)
     return lobes
@@ -368,7 +386,7 @@ def _loop_perimeter(loop: list[tuple[float, float]]) -> float:
     return total
 
 
-def _gaussian_blur_2d(grid: np.ndarray, sigma: float = _BLUR_SIGMA) -> np.ndarray:
+def _gaussian_blur_2d(grid: np.ndarray, sigma: float) -> np.ndarray:
     """Apply separable Gaussian blur to 2D grid (vectorized, pure numpy)."""
     size = int(4 * sigma + 0.5) * 2 + 1
     x = np.arange(size) - size // 2
@@ -380,7 +398,6 @@ def _gaussian_blur_2d(grid: np.ndarray, sigma: float = _BLUR_SIGMA) -> np.ndarra
 
     # Horizontal pass: convolve each row via matrix multiply
     padded = np.pad(grid, ((0, 0), (pad, pad)), mode="edge")
-    # Build column indices for sliding window: (nx, size)
     idx = np.arange(nx)[:, None] + np.arange(size)[None, :]
     temp = padded[:, idx] @ kernel  # (ny, nx)
 
@@ -461,7 +478,7 @@ def _project_lobe_2d(
     cropped = grid_2d[r0:r1, c0:c1]
 
     # Blur + upsample the cropped region only
-    blurred = _gaussian_blur_2d(cropped)
+    blurred = _gaussian_blur_2d(cropped, _BLUR_SIGMA)
     if lobe.phase == "pos":
         blurred = np.maximum(blurred, 0.0)
     else:
@@ -544,7 +561,7 @@ def build_mo_contours(
 
     # Find 3D lobes (reuse if cached)
     if lobes_3d is None:
-        lobes_3d = find_3d_lobes(cube.grid_data, isovalue)
+        lobes_3d = find_3d_lobes(cube.grid_data, isovalue, steps=cube.steps)
 
     # Project and contour each lobe independently (rotation per-lobe)
     lobe_contours: list[LobeContour2D] = []
@@ -631,8 +648,13 @@ def classify_mo_lobes(lobes: list[LobeContour2D], mol_z: float) -> list[bool]:
             continue
         used_pos.add(pi)
         used_neg.add(ni)
-        # Within pair: higher z = front
-        if lobes[pi].z_depth >= lobes[ni].z_depth:
+        # Within pair: higher z = front — but if z-depths are nearly equal
+        # (in-plane orbital) both lobes are visible, so render both as front
+        dz = abs(lobes[pi].z_depth - lobes[ni].z_depth)
+        if dz < 0.3:  # Angstrom — lobes coplanar with viewer
+            is_front[pi] = True
+            is_front[ni] = True
+        elif lobes[pi].z_depth >= lobes[ni].z_depth:
             is_front[pi] = True
             is_front[ni] = False
         else:
@@ -799,7 +821,7 @@ def recompute_mo(graph: nx.Graph, config: RenderConfig, mo_data: dict) -> None:
 
     # Cache lobes and positions on first call
     if "lobes_3d" not in mo_data:
-        mo_data["lobes_3d"] = find_3d_lobes(cube_data.grid_data, mo_data["isovalue"])
+        mo_data["lobes_3d"] = find_3d_lobes(cube_data.grid_data, mo_data["isovalue"], steps=cube_data.steps)
         mo_data["pos_flat_ang"] = compute_grid_positions(cube_data)
 
     orig = np.array([p for _, p in cube_data.atoms], dtype=float)
