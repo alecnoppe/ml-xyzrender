@@ -8,10 +8,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from functools import partial
 from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 from xyzgraph import DATA, build_graph, read_xyz_file
+from xyzrender.bond_builder import build_distance_based_graph
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +30,32 @@ def load_molecule(
     charge: int = 0,
     multiplicity: int | None = None,
     kekule: bool = False,
+    graph_builder: str = "distance-based"
 ) -> nx.Graph:
-    """Read molecular structure file and build graph.
+    """Read molecular structure file and build graph. Builds graph with either the xyzgraph backend, or the distance-
+    based heuristic method commonly used in Machine Learning (GenAI for Inverse Design) approaches. 
 
     Supports .xyz natively, .cube (Gaussian cube files), and all other
     formats (ORCA .out, Gaussian .log, Q-Chem, etc.) via cclib.  Bond
     orders are always determined by xyzgraph.
+    
+    Args:
+        path: path to molecule file
+        charge: charge of the molecule
+        multiplicity: molecule multiplicity
+        kekule: whether to use kekule structures when plotting the molecule
+        graph_builder: which graph building backend to use. Options: `"distance-based"` or `"default"`.
+            NOTE: default looks very strange for QM9, so I would recommend to use distance-based for this dataset.
     """
+    
+    match graph_builder:
+        case "distance-based":
+            gb = build_distance_based_graph
+        case "default":
+            gb = partial(build_graph, charge=charge, multiplicity=multiplicity, kekule=kekule)
+        case _:
+            raise Exception(f"Graph Builder has to be either 'default' or 'distance-based' - not {graph_builder}")
+    
     p = str(path)
     logger.info("Loading %s", p)
     if p.endswith(".cube"):
@@ -42,7 +63,7 @@ def load_molecule(
         graph, _cube = load_cube(p, charge=charge, multiplicity=multiplicity, kekule=kekule)
     elif p.endswith(".xyz"):
         logger.debug("Parsing as XYZ")
-        graph = build_graph(read_xyz_file(p), charge=charge, multiplicity=multiplicity, kekule=kekule)
+        graph = gb(read_xyz_file(p))
     else:
         logger.debug("Parsing as QM output via cclib")
         atoms, file_charge, file_mult = _parse_qm_output(p)

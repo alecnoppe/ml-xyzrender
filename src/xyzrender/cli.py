@@ -171,6 +171,13 @@ def main() -> None:
     gif_g.add_argument("--gif-fps", type=int, default=10, help="GIF frames per second (default: 10)")
     gif_g.add_argument("--rot-frames", type=int, default=120, help="Rotation frames (default: 120)")
 
+    # --- Machine Learning Visualization Arguments ---
+    ml_g = p.add_argument_group("Machine Learning Visualization Arguments")
+    ml_g.add_argument("--graph-builder", "-gb", type=str, default="distance-based", help="Which graph-builder to use \
+        when constructing the graph from the .xyz file.")
+    ml_g.add_argument("--diffusion-gif", action="store_true", help="Whether to plot a diffusion-trajectory gif.")
+    ml_g.add_argument("--diffusion-cartoon", action="store_true", help="Whether to plot a diffusion-trajectory cartoon.")
+    
     args = p.parse_args()
 
     from xyzrender import configure_logging
@@ -299,7 +306,7 @@ def main() -> None:
             kekule=args.kekule,
         )
     elif args.input:
-        graph = load_molecule(args.input, charge=args.charge, multiplicity=args.multiplicity, kekule=args.kekule)
+        graph = load_molecule(args.input, charge=args.charge, multiplicity=args.multiplicity, kekule=args.kekule, graph_builder=args.graph_builder)
     elif not sys.stdin.isatty():
         graph = load_stdin(charge=args.charge, multiplicity=args.multiplicity, kekule=args.kekule)
     else:
