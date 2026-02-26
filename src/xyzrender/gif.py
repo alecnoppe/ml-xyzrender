@@ -170,8 +170,7 @@ def render_vibration_gif(
         config.auto_orient = False
 
     # Fixed viewport across all frames so every PNG has identical dimensions
-    all_pos = np.vstack([np.array(f["positions"]) for f in frames])
-    config = _fixed_viewport(all_pos, config)
+    config = _fixed_viewport(frames, config)
 
     # graphRC's frames are already a full oscillation cycle — just loop
     logger.info("Rendering vibration GIF (%d frames)", len(frames))
@@ -250,11 +249,10 @@ def render_vibration_rotation_gif(
     # Cycle vibration frames for the full rotation
     all_frames = [vib_frames[i % n_vib] for i in range(total)]
 
-    # Fixed viewport across all frames so every PNG has identical dimensions
-    all_pos = np.vstack([np.array(f["positions"]) for f in vib_frames])
-    rot_cfg = _fixed_viewport(all_pos, config)
-
     axis_vec, axis_sign = _rotation_axis(axis)
+
+    # Fixed viewport across all frames so every PNG has identical dimensions
+    rot_cfg = _fixed_viewport(vib_frames, config, rotation_axis=axis_vec)
     logger.info(
         "Rendering vibration+rotation GIF (%d vib x %d rot = %d frames, axis=%s)", n_vib, rotations, total, axis
     )
@@ -293,9 +291,9 @@ def render_rotation_gif(
         _orient_graph(graph, pca_matrix(np.array([graph.nodes[n]["position"] for n in nodes])))
 
     original_positions = {n: graph.nodes[n]["position"] for n in nodes}
-    rot_cfg = _fixed_viewport(np.array(list(original_positions.values())), config)
-
     axis_vec, axis_sign = _rotation_axis(axis)
+    frame = {"positions": list(original_positions.values()), "symbols": [graph.nodes[n]["symbol"] for n in nodes]}
+    rot_cfg = _fixed_viewport([frame], config, rotation_axis=axis_vec)
     step = 360.0 / n_frames
     logger.info("Rendering rotation GIF (%d frames, axis=%s)", n_frames, axis)
     pngs = []
@@ -381,14 +379,13 @@ def render_trajectory_gif(
         config = copy.copy(config)
         config.auto_orient = False
 
-    # Fixed viewport across all frames so every PNG has identical dimensions
-    all_pos = np.vstack([np.array(f["positions"]) for f in frames])
-    config = _fixed_viewport(all_pos, config)
-
     axis_vec = None
     axis_sign = 1.0
     if axis:
         axis_vec, axis_sign = _rotation_axis(axis)
+
+    # Fixed viewport across all frames so every PNG has identical dimensions
+    config = _fixed_viewport(frames, config, rotation_axis=axis_vec)
 
     logger.info("Rendering trajectory GIF (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
     pngs = _render_frames(
@@ -398,22 +395,51 @@ def render_trajectory_gif(
     logger.info("Wrote %s", output)
 
 
-def _fixed_viewport(positions: np.ndarray, config: RenderConfig) -> RenderConfig:
-    """Create a config with fixed viewport sized to the bounding sphere."""
+def _fixed_viewport(frames: list[dict], config: RenderConfig, rotation_axis: np.ndarray | None = None) -> RenderConfig:
+    """Create a config with fixed viewport so every frame has identical canvas size.
+
+    When *rotation_axis* is given, computes the exact projection envelope for
+    rotation around that axis: each atom's max screen-X extent is its distance
+    from the axis, and screen-Y extent is its component along the axis.
+    Otherwise uses the tighter 2D (XY) bounding box.
+
+    """
     import copy
 
-    # Conservative padding: largest VdW ~2.0 Å
-    atom_pad = config.atom_scale * 0.075 * 2.0
-    centroid = positions.mean(axis=0)
-    max_r = np.linalg.norm(positions - centroid, axis=1).max()
-    fixed_span = 2 * (max_r + atom_pad)
+    from xyzgraph import DATA
 
-    rot_cfg = copy.copy(config)
-    rot_cfg.fixed_span = fixed_span
-    rot_cfg.fixed_center = (float(centroid[0]), float(centroid[1]))
-    rot_cfg.auto_orient = False  # PCA per-frame would fight rotation
-    logger.debug("Bounding sphere: r=%.2f, fixed_span=%.2f", max_r, fixed_span)
-    return rot_cfg
+    max_vdw = max(DATA.vdw.get(s, 1.5) for s in set(frames[0]["symbols"]))
+    if config.vdw_indices is not None:
+        atom_pad = max_vdw * config.vdw_scale
+    else:
+        atom_pad = max_vdw * config.atom_scale * 0.075
+
+    all_pos = np.vstack([np.array(f["positions"]) for f in frames])
+
+    if rotation_axis is not None:
+        centroid = all_pos.mean(axis=0)
+        rel = all_pos - centroid
+        # Component along the rotation axis (stays fixed as screen-Y)
+        along = rel @ rotation_axis
+        # Distance from the rotation axis (sweeps into screen-X)
+        perp = np.linalg.norm(rel - np.outer(along, rotation_axis), axis=1)
+        half_x = perp.max() + atom_pad
+        half_y = max(along.max() - along.min(), 0) / 2 + atom_pad
+        fixed_span = 2 * max(half_x, half_y)
+        center_xy = (float(centroid[0]), float(centroid[1]))
+    else:
+        xy = all_pos[:, :2]
+        lo = xy.min(axis=0) - atom_pad
+        hi = xy.max(axis=0) + atom_pad
+        center_xy = (float((lo[0] + hi[0]) / 2), float((lo[1] + hi[1]) / 2))
+        fixed_span = float(max((hi - lo).max(), 1e-6))
+
+    cfg = copy.copy(config)
+    cfg.fixed_span = fixed_span
+    cfg.fixed_center = center_xy
+    cfg.auto_orient = False
+    logger.debug("Fixed viewport: span=%.2f, center=(%.2f, %.2f)", fixed_span, *center_xy)
+    return cfg
 
 
 def _compute_rotation(original_graph: nx.Graph, rotated_graph: nx.Graph) -> np.ndarray:
