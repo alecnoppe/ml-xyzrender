@@ -169,6 +169,10 @@ def render_vibration_gif(
         config = copy.copy(config)
         config.auto_orient = False
 
+    # Fixed viewport across all frames so every PNG has identical dimensions
+    all_pos = np.vstack([np.array(f["positions"]) for f in frames])
+    config = _fixed_viewport(all_pos, config)
+
     # graphRC's frames are already a full oscillation cycle — just loop
     logger.info("Rendering vibration GIF (%d frames)", len(frames))
     pngs = _render_frames(ts_graph, frames, config, fixed_ncis=fixed_ncis)
@@ -246,9 +250,9 @@ def render_vibration_rotation_gif(
     # Cycle vibration frames for the full rotation
     all_frames = [vib_frames[i % n_vib] for i in range(total)]
 
-    # Use first frame positions for bounding sphere
-    pos0 = np.array(vib_frames[0]["positions"])
-    rot_cfg = _rotation_config(pos0, config)
+    # Fixed viewport across all frames so every PNG has identical dimensions
+    all_pos = np.vstack([np.array(f["positions"]) for f in vib_frames])
+    rot_cfg = _fixed_viewport(all_pos, config)
 
     axis_vec, axis_sign = _rotation_axis(axis)
     logger.info(
@@ -289,7 +293,7 @@ def render_rotation_gif(
         _orient_graph(graph, pca_matrix(np.array([graph.nodes[n]["position"] for n in nodes])))
 
     original_positions = {n: graph.nodes[n]["position"] for n in nodes}
-    rot_cfg = _rotation_config(np.array(list(original_positions.values())), config)
+    rot_cfg = _fixed_viewport(np.array(list(original_positions.values())), config)
 
     axis_vec, axis_sign = _rotation_axis(axis)
     step = 360.0 / n_frames
@@ -377,12 +381,13 @@ def render_trajectory_gif(
         config = copy.copy(config)
         config.auto_orient = False
 
-    # Fixed viewport for rotation
+    # Fixed viewport across all frames so every PNG has identical dimensions
+    all_pos = np.vstack([np.array(f["positions"]) for f in frames])
+    config = _fixed_viewport(all_pos, config)
+
     axis_vec = None
     axis_sign = 1.0
     if axis:
-        pos0 = np.array(frames[0]["positions"])
-        config = _rotation_config(pos0, config)
         axis_vec, axis_sign = _rotation_axis(axis)
 
     logger.info("Rendering trajectory GIF (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
@@ -393,7 +398,7 @@ def render_trajectory_gif(
     logger.info("Wrote %s", output)
 
 
-def _rotation_config(positions: np.ndarray, config: RenderConfig) -> RenderConfig:
+def _fixed_viewport(positions: np.ndarray, config: RenderConfig) -> RenderConfig:
     """Create a config with fixed viewport sized to the bounding sphere."""
     import copy
 
