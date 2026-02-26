@@ -26,34 +26,43 @@ if TYPE_CHECKING:
 
 
 
-SVG_SIZE_RE = re.compile(
-    r'<svg[^>]*\bwidth="([^"]+)"[^>]*\bheight="([^"]+)"',
-    re.IGNORECASE
-)
-
-# TODO: DOCUMENTATION
 # TODO: CHECK IF 'TITLE' ROW CAN BE **ABOVE** THE PLOTS, INSTEAD OF **ON** THE PLOTS.
 def _stitch_cartoon(svgs: list[str], output: str, config: RenderConfig, *, cartoon_titles=None) -> None:
-    cartoon_svg = '<?xml version="1.0" encoding="UTF-8"?>\n'
-
+    """
+    Horizontally together a list of SVGS, such that they are vertically centered and may feature individual titles.
+        
+    Args:
+        svgs: The XML strings corresponding to the individual svgs (to be plotted in the cartoon).
+        output: Path to store the cartoon .svg file.
+        config: RenderConfig - used only for stylizing the title (right now).
+        cartoon_titles: Optionally, can plot a title for each frame in the cartoon.
+    """
+    # Create regex for extracting width/height from individual svgs
+    SVG_SIZE_RE = re.compile(
+        r'<svg[^>]*\bwidth="([^"]+)"[^>]*\bheight="([^"]+)"',
+        re.IGNORECASE
+    )
+    
+    # Iterate over SVGs and store the width/height for each one
     widths = []
     heights = []
-
     for svg in svgs:
         match = SVG_SIZE_RE.search(svg)
         if not match:
             raise ValueError("Could not find width/height in SVG")
-
         width, height = match.groups()
-
         width = int(float(width.replace("px", "")))
         height = int(float(height.replace("px", "")))
-
         widths.append(width)
         heights.append(height)
-
+    # Select total width and maximum height, for row width and height respcetively. 
+    # NOTE: Max height is also used to vertically center the individual plots - in case they do not all have the same
+    # height
     total_width = sum(widths)
     max_height = max(heights)
+    
+    # Create the header of the final svg
+    cartoon_svg = '<?xml version="1.0" encoding="UTF-8"?>\n'
     start_svg = f"""
     <svg xmlns="http://www.w3.org/2000/svg"
      xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -63,15 +72,18 @@ def _stitch_cartoon(svgs: list[str], output: str, config: RenderConfig, *, carto
     """
     cartoon_svg += start_svg
     cartoon_svg += f'<rect width="100%" height="100%" fill="{config.background}"/>\n'
-    widths_til_i = 0
     
+    # Iterate over all svgs, and for each svg do the following
+    # Shift to the right by 'widths_til_i' and center the svg vertically with the tallest svg in the list.
+    # Optionally write a title in a row along the top of the cartoon. 
+    widths_til_i = 0
     for i, svg in enumerate(svgs):
-        
+        # Add main svg content
         center_height = 0.5 * (max_height - heights[i])
         cartoon_svg += f'<g transform="translate({widths_til_i},{center_height})">\n'
         cartoon_svg += svg + "\n"
         cartoon_svg += "</g>\n"
-        
+        # Add titles
         if cartoon_titles:
             title_x = widths_til_i + widths[i] / 2  # center of the frame
             cartoon_svg += (
@@ -82,15 +94,16 @@ def _stitch_cartoon(svgs: list[str], output: str, config: RenderConfig, *, carto
                 f'fill="{config.title_color}">'
                 f'{cartoon_titles[i]}</text>\n'
             )
-
+        # Update width offset
         widths_til_i += widths[i]
         
     cartoon_svg += "</svg>"
     
+    # Write final svg to disk
     with open(output, "w") as f:
         f.write(cartoon_svg)
 
-# TODO: DOCUMENTATION
+
 def _render_cartoon_frames(
     graph: nx.Graph,
     frames: list[dict],
@@ -101,7 +114,7 @@ def _render_cartoon_frames(
     rotation_axis: np.ndarray | None = None,
     rotation_sign: float = 1.0,
 ) -> list[bytes]:
-    """Render each trajectory frame to PNG, keeping graph topology fixed.
+    """Render each trajectory frame to SVG, keeping graph topology fixed.
 
     If *nci_analyzer* is provided, NCI interactions are re-detected per
     frame and the graph is decorated with the frame-specific NCI edges.
@@ -139,7 +152,7 @@ def _render_cartoon_frames(
         _progress(idx + 1, total)
     return svgs
 
-# TODO: DOCUMENTATION
+
 def plot_cartoon(
     frames: list[dict],
     num_cartoon_frames: int,
@@ -155,11 +168,16 @@ def plot_cartoon(
     kekule: bool = False,
     graph_builder: str = "distance-based"
 ) -> None:
-    """Render optimization/trajectory path as an animated GIF.
+    """Render optimization/trajectory path as a cartoon.
+    NOTE: Though we could theoretically render each frame in a trajectory, it is highly recommended to subsample using
+    `num_cartoon_frames` << #frames for large #frames.
     
     Args:
-        graph_builder: choose graph builder from `distance-based` and `default`.
+        num_cartoon_frames: Number of frames to plot in the cartoon. This will plot the first frame, the last \
+            frame and n-2 equidistant frames in between.
+        graph_builder: Choose graph builder from `distance-based` and `default`.
             NOTE: for QM9 `distance-based` is prefered.
+        cartoon_titles: Optional list of titles which can be plotted above each frame in the cartoon.
 
     Builds the molecular graph once from the last frame (optimized geometry)
     to get correct bond orders, then updates positions per frame.
@@ -174,6 +192,7 @@ def plot_cartoon(
             the `num_cartoon_frames`.")
     if num_cartoon_frames > len(frames) or num_cartoon_frames <= 0:
         raise Exception("The `num_cartoon_frames` must be lie in interval (0, `len(frames)`] ")
+    
     # Build graph from last frame (optimized geometry → correct bond orders)
     last = frames[-1]
     last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
