@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from xyzrender.config import build_render_config, load_config
-from xyzrender.cartoon import plot_cartoon
+from xyzrender.cartoon import plot_cartoon, plot_grid
 
 if TYPE_CHECKING:
     from xyzrender.cube import CubeData
@@ -89,7 +89,7 @@ def main() -> None:
 
     # --- Input / Output ---
     io_g = p.add_argument_group("input/output")
-    io_g.add_argument("input", nargs="?", help="XYZ file (reads stdin if omitted)")
+    io_g.add_argument("input", nargs="+", type=str, help="XYZ file (reads stdin if omitted)")
     io_g.add_argument("-o", "--output", help="Output file (.svg, .png, .pdf)")
     io_g.add_argument("-c", "--charge", type=int, default=0)
     io_g.add_argument("-m", "--multiplicity", type=int, default=None)
@@ -164,16 +164,20 @@ def main() -> None:
 
     # --- Machine Learning Visualization Arguments ---
     ml_g = p.add_argument_group("Machine Learning Visualization Arguments")
-    ml_g.add_argument("--graph-builder", "-gb", type=str, default="distance-based", help="Which graph-builder to use \
+    ml_g.add_argument("--graph-builder", "-gb", type=str, default="default", help="Which graph-builder to use \
         when constructing the graph from the .xyz file.")
     ml_g.add_argument("--cartoon", action="store_true", help="Whether to plot a (diffusion)-trajectory cartoon.")
     ml_g.add_argument("--cartoon-subsample-frames", type=int, default=5, help="Number of frames to plot in the cartoon. \
         This will plot the first frame, the last frame and n-2 equidistant frames in between.")
     ml_g.add_argument("--cartoon-titles", type=str, nargs="+", default=None, help="List of titles for each \
         subfigure in the cartoon.")
+    ml_g.add_argument("--grid", action="store_true", help="Whether to plot a grid of molecules.")
+    ml_g.add_argument("--grid-titles", type=str, nargs="+", default=None, help="List of titles for each \
+        subfigure in the grid.")
     ml_g.add_argument("--fog-color", type=str, default=None, help="Color for the fog.")
     ml_g.add_argument("--title", type=str, default=None, help="Title for the plot.")
     ml_g.add_argument("--title-color", type=str, default=None, help="Color for the title.")
+    ml_g.add_argument("--title-font-size", type=int, default=None, help="Font-size for the title.")
     args = p.parse_args()
 
     from xyzrender import configure_logging
@@ -197,7 +201,8 @@ def main() -> None:
         ("vdw_scale", "vdw_scale"),
         ("fog_color", "fog_color"),
         ("title", "title"),
-        ("title_color", "title_color") # TODO: CHECK THAT ALL 'NEW' ARGUMENTS CAN BE MANIPULATED HERE.
+        ("title_color", "title_color"),
+        ("title_font_size", "title_font_size")
     ]:
         val = getattr(args, attr)
         if val is not None:
@@ -229,6 +234,14 @@ def main() -> None:
     )
     # Auto-orient: on by default, off for interactive/stdin
     from_stdin = not args.input and not sys.stdin.isatty()
+    
+    # Grid plots can use multiple input files and plot them together. For normal plotting, only use first input file
+    if type(args.input) == list and args.grid:
+        grid_files = args.input
+    elif type(args.input) == list and len(args.input) > 1:
+        raise Exception("Specifying multiple input files only works when using `--grid`")
+    args.input = args.input[0]
+    
     if args.orient is not None:
         cfg.auto_orient = args.orient
     elif args.interactive or from_stdin:
@@ -482,6 +495,23 @@ def main() -> None:
             detect_nci=args.nci,
             axis=args.gif_rot or None,
             kekule=args.kekule,
+        )
+    elif args.grid:
+        if not grid_files:
+            p.error("--grid requires grid_files to be specified")
+        graphs = [
+            load_molecule(
+                fp,
+                graph_builder=args.graph_builder,
+                charge=args.charge,
+                multiplicity=args.multiplicity) 
+            for fp in grid_files]
+        
+        plot_grid(
+            graphs,
+            cfg,
+            args.output,
+            frame_titles=args.grid_titles,
         )
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import math
 from io import BytesIO
 from typing import TYPE_CHECKING, List
 
@@ -26,8 +27,120 @@ if TYPE_CHECKING:
 
 
 def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_titles=None) -> None:
-    if len(svgs) % int(np.sqrt(len(svgs))) != 0:
-        print("AAAAA")
+    """
+    Stitch SVGs into a near-square grid.
+
+    If the number of frames does not fill the grid exactly, the remaining
+    cells are padded with white boxes.
+    """
+    n_frames = len(svgs)
+
+    # --- Determine grid size (near-square) ---
+    n_cols = math.ceil(math.sqrt(n_frames))
+    n_rows = math.ceil(n_frames / n_cols)
+    n_cells = n_rows * n_cols
+
+    # --- Extract SVG sizes ---
+    SVG_SIZE_RE = re.compile(
+        r'<svg[^>]*\bwidth="([^"]+)"[^>]*\bheight="([^"]+)"',
+        re.IGNORECASE
+    )
+
+    widths = []
+    heights = []
+    for svg in svgs:
+        match = SVG_SIZE_RE.search(svg)
+        if not match:
+            raise ValueError("Could not find width/height in SVG")
+        width, height = match.groups()
+        width = int(float(width.replace("px", "")))
+        height = int(float(height.replace("px", "")))
+        widths.append(width)
+        heights.append(height)
+
+    # --- Pad with dummy cells if needed ---
+    if n_cells > n_frames:
+        max_w = max(widths)
+        max_h = max(heights)
+        pad_count = n_cells - n_frames
+        widths.extend([max_w] * pad_count)
+        heights.extend([max_h] * pad_count)
+        svgs = svgs + [None] * pad_count  # placeholder for empty cells
+
+    # --- Reshape into grid ---
+    widths_grid = np.array(widths).reshape(n_rows, n_cols)
+    heights_grid = np.array(heights).reshape(n_rows, n_cols)
+
+    # --- Compute per-column and per-row sizes ---
+    col_widths = widths_grid.max(axis=0)
+    row_heights = heights_grid.max(axis=1)
+
+    total_width = int(col_widths.sum())
+    total_height = int(row_heights.sum())
+
+    # --- Build SVG header ---
+    grid_svg = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    grid_svg += f"""
+    <svg xmlns="http://www.w3.org/2000/svg"
+    xmlns:xlink="http://www.w3.org/1999/xlink"
+    width="{total_width}"
+    height="{total_height}"
+    viewBox="0 0 {total_width} {total_height}">
+    """
+    grid_svg += f'<rect width="100%" height="100%" fill="{config.background}"/>\n'
+
+    # --- Place cells ---
+    for row in range(n_rows):
+        for col in range(n_cols):
+            idx = row * n_cols + col
+
+            x_offset = col_widths[:col].sum()
+            y_offset = row_heights[:row].sum()
+
+            cell_w = col_widths[col]
+            cell_h = row_heights[row]
+
+            if svgs[idx] is not None:
+                # Center SVG inside its cell
+                dx = 0.5 * (cell_w - widths_grid[row, col])
+                dy = 0.5 * (cell_h - heights_grid[row, col])
+
+                grid_svg += (
+                    f'<g transform="translate({x_offset + dx},{y_offset + dy})">\n'
+                )
+                grid_svg += svgs[idx] + "\n"
+                grid_svg += "</g>\n"
+
+                # Optional titles
+                if frame_titles:
+                    if len(frame_titles) != n_frames:
+                        raise ValueError(
+                            "Length of frame_titles must match number of frames."
+                        )
+
+                    title_x = x_offset + cell_w / 2
+                    title_y = y_offset + config.padding / 2
+
+                    grid_svg += (
+                        f'<text x="{title_x}" y="{title_y:.1f}" '
+                        f'text-anchor="middle" dominant-baseline="hanging" '
+                        f'font-size="{config.title_font_size}" '
+                        f'font-family="{config.title_font_family}" '
+                        f'fill="{config.title_color}">'
+                        f'{frame_titles[idx]}</text>\n'
+                    )
+            else:
+                # Empty padded cell → draw white rectangle
+                grid_svg += (
+                    f'<rect x="{x_offset}" y="{y_offset}" '
+                    f'width="{cell_w}" height="{cell_h}" '
+                    f'fill="white"/>\n'
+                )
+
+    grid_svg += "</svg>"
+
+    with open(output, "w") as f:
+        f.write(grid_svg)
 
 
 # TODO: CHECK IF 'TITLE' ROW CAN BE **ABOVE** THE PLOTS, INSTEAD OF **ON** THE PLOTS.
@@ -120,7 +233,7 @@ def _render_cartoon_frames(
     charge: int = 0,
     multiplicity: int | None = None,
     kekule: bool = False,
-    graph_builder: str = "distance-based"
+    graph_builder: str = "default"
 ) -> list[bytes]:
     """Render each trajectory frame to SVG, keeping graph topology fixed.
 
@@ -184,7 +297,7 @@ def plot_cartoon(
     detect_nci: bool = False,
     axis: str | None = None,
     kekule: bool = False,
-    graph_builder: str = "distance-based"
+    graph_builder: str = "default"
 ) -> None:
     """Render optimization/trajectory path as a cartoon.
     NOTE: Though we could theoretically render each frame in a trajectory, it is highly recommended to subsample using
@@ -273,18 +386,11 @@ def plot_cartoon(
     logger.info("Wrote %s", output)
     
     
-def plot_grid(frames: list[dict],
+def plot_grid(graphs: list[nx.Graph],
     config: RenderConfig,
     output: str,
     *,
-    charge: int = 0,
-    multiplicity: int | None = None,
-    frame_titles: List[str] | None = None,
-    reference_graph: nx.Graph | None = None,
-    detect_nci: bool = False,
-    axis: str | None = None,
-    kekule: bool = False,
-    graph_builder: str = "distance-based"):
+    frame_titles: List[str] | None = None,):
     """Render multiple frames in a square grid. Looks best if |frames| = N^2 for some integer N.
     
     Args:
@@ -300,58 +406,6 @@ def plot_grid(frames: list[dict],
     If ``axis`` is provided, the molecule rotates 360° around that axis
     over the course of the trajectory.
     """
-    # Build graph from last frame (optimized geometry → correct bond orders)
-    last = frames[-1]
-    last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
-    match graph_builder:
-        case "distance-based":
-            graph = build_distance_based_graph(last_atoms)
-        case "default":
-            graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
-        case _:
-            raise Exception(f"Options for graph_builder are `distance-based` or `default`, not {graph_builder}")
-
-    # Copy TS/NCI edge attributes from reference graph
-    if reference_graph is not None:
-        for i, j, d in reference_graph.edges(data=True):
-            if graph.has_edge(i, j):
-                for attr in ("TS", "NCI", "bond_type"):
-                    if attr in d:
-                        graph[i][j][attr] = d[attr]
-
-    # Build NCI analyzer once from topology, detect per frame later
-    nci_analyzer = None
-    if detect_nci:
-        from xyzgraph.nci import NCIAnalyzer
-
-        nci_analyzer = NCIAnalyzer(graph)
-
-    # Apply viewer rotation if reference orientation was given
-    if reference_graph is not None:
-        logger.debug("Applying Kabsch rotation from viewer orientation")
-        rot = _compute_rotation(graph, reference_graph)
-        frames = _rotate_frames(frames, rot)
-
-    # PCA: compute once from first frame, apply consistently to all
-    if config.auto_orient:
-        import copy
-
-        vt = pca_matrix(np.array(frames[0]["positions"]))
-        frames = _orient_frames(frames, vt)
-        config = copy.copy(config)
-        config.auto_orient = False
-
-    # Fixed viewport for rotation
-    axis_vec = None
-    axis_sign = 1.0
-    if axis:
-        pos0 = np.array(frames[0]["positions"])
-        config = _rotation_config(pos0, config)
-        axis_vec, axis_sign = _rotation_axis(axis)
-
-    logger.info("Rendering trajectory cartoon (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
-    pngs = _render_cartoon_frames(
-        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign
-    )
-    _stitch_grid(pngs, output, config, frame_titles=frame_titles)
+    svgs = [render_svg(graph, config=config, _id_prefix=str(i)) for i,graph in enumerate(graphs)]
+    _stitch_grid(svgs, output, config, frame_titles=frame_titles)
     logger.info("Wrote %s", output)

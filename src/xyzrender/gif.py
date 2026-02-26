@@ -332,7 +332,7 @@ def render_trajectory_gif(
     detect_nci: bool = False,
     axis: str | None = None,
     kekule: bool = False,
-    graph_builder: str = "distance-based"
+    graph_builder: str = "default"
 ) -> None:
     """Render optimization/trajectory path as an animated GIF.
     
@@ -457,7 +457,7 @@ def _render_frames(
     charge: int = 0,
     multiplicity: int | None = None,
     kekule: bool = False,
-    graph_builder: str = "distance-based"
+    graph_builder: str = "default"
 ) -> list[bytes]:
     """Render each trajectory frame to PNG, keeping graph topology fixed.
 
