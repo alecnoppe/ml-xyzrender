@@ -138,7 +138,7 @@ class RenderConfig:
     """Rendering settings."""
 
     canvas_size: int = 800
-    padding: float = 40.0
+    padding: float = 20.0
     atom_scale: float = 1.0
     atom_stroke_width: float = 1.5
     atom_stroke_color: str = "#000000"
