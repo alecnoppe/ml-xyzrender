@@ -56,8 +56,7 @@ def _stitch_cartoon(svgs: list[str], output: str, config: RenderConfig, *, carto
         widths.append(width)
         heights.append(height)
     # Select total width and maximum height, for row width and height respcetively. 
-    # NOTE: Max height is also used to vertically center the individual plots - in case they do not all have the same
-    # height
+    # Max height is also used to vertically center the individual plots - in case they do not all have the same height
     total_width = sum(widths)
     max_height = max(heights)
     
