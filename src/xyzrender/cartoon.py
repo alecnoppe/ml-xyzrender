@@ -25,6 +25,10 @@ if TYPE_CHECKING:
     from xyzrender.types import RenderConfig
 
 
+def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_titles=None) -> None:
+    if len(svgs) % int(np.sqrt(len(svgs))) != 0:
+        print("AAAAA")
+
 
 # TODO: CHECK IF 'TITLE' ROW CAN BE **ABOVE** THE PLOTS, INSTEAD OF **ON** THE PLOTS.
 def _stitch_cartoon(svgs: list[str], output: str, config: RenderConfig, *, cartoon_titles=None) -> None:
@@ -112,6 +116,11 @@ def _render_cartoon_frames(
     fixed_ncis: list | None = None,
     rotation_axis: np.ndarray | None = None,
     rotation_sign: float = 1.0,
+    recompute_bonds: bool = False,
+    charge: int = 0,
+    multiplicity: int | None = None,
+    kekule: bool = False,
+    graph_builder: str = "distance-based"
 ) -> list[bytes]:
     """Render each trajectory frame to SVG, keeping graph topology fixed.
 
@@ -134,7 +143,17 @@ def _render_cartoon_frames(
         positions = frame["positions"]
         for i, (x, y, z) in enumerate(positions):
             graph.nodes[i]["position"] = (float(x), float(y), float(z))
-
+        
+        if recompute_bonds:
+            atoms = list(zip(frame["symbols"], [tuple(p) for p in frame["positions"]], strict=True))
+            match graph_builder:
+                case "distance-based":
+                    graph = build_distance_based_graph(atoms)
+                case "default":
+                    graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+                case _:
+                    raise Exception(f"Options for graph_builder are `distance-based` or `default`, not {graph_builder}")
+                
         if nci_analyzer is not None:
             ncis = nci_analyzer.detect(np.array(positions))
             render_graph = build_nci_graph(graph, ncis)
@@ -247,7 +266,92 @@ def plot_cartoon(
 
     logger.info("Rendering trajectory cartoon (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
     pngs = _render_cartoon_frames(
-        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign
+        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign, 
+        recompute_bonds=True, charge=charge, multiplicity=multiplicity, kekule=kekule, graph_builder=graph_builder
     )
     _stitch_cartoon(pngs, output, config, cartoon_titles=cartoon_titles)
+    logger.info("Wrote %s", output)
+    
+    
+def plot_grid(frames: list[dict],
+    config: RenderConfig,
+    output: str,
+    *,
+    charge: int = 0,
+    multiplicity: int | None = None,
+    frame_titles: List[str] | None = None,
+    reference_graph: nx.Graph | None = None,
+    detect_nci: bool = False,
+    axis: str | None = None,
+    kekule: bool = False,
+    graph_builder: str = "distance-based"):
+    """Render multiple frames in a square grid. Looks best if |frames| = N^2 for some integer N.
+    
+    Args:
+        graph_builder: Choose graph builder from `distance-based` and `default`.
+            NOTE: for QM9 `distance-based` is prefered.
+        frame_titles: Optional list of titles which can be plotted above each frame in the grid.
+
+    Builds the molecular graph once from the last frame (optimized geometry)
+    to get correct bond orders, then updates positions per frame.
+    If ``reference_graph`` is provided, all frames are rotated to match.
+    If ``detect_nci`` is True, NCI interactions are re-detected per frame
+    using xyzgraph's NCIAnalyzer (topology built once, geometry per frame).
+    If ``axis`` is provided, the molecule rotates 360° around that axis
+    over the course of the trajectory.
+    """
+    # Build graph from last frame (optimized geometry → correct bond orders)
+    last = frames[-1]
+    last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
+    match graph_builder:
+        case "distance-based":
+            graph = build_distance_based_graph(last_atoms)
+        case "default":
+            graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+        case _:
+            raise Exception(f"Options for graph_builder are `distance-based` or `default`, not {graph_builder}")
+
+    # Copy TS/NCI edge attributes from reference graph
+    if reference_graph is not None:
+        for i, j, d in reference_graph.edges(data=True):
+            if graph.has_edge(i, j):
+                for attr in ("TS", "NCI", "bond_type"):
+                    if attr in d:
+                        graph[i][j][attr] = d[attr]
+
+    # Build NCI analyzer once from topology, detect per frame later
+    nci_analyzer = None
+    if detect_nci:
+        from xyzgraph.nci import NCIAnalyzer
+
+        nci_analyzer = NCIAnalyzer(graph)
+
+    # Apply viewer rotation if reference orientation was given
+    if reference_graph is not None:
+        logger.debug("Applying Kabsch rotation from viewer orientation")
+        rot = _compute_rotation(graph, reference_graph)
+        frames = _rotate_frames(frames, rot)
+
+    # PCA: compute once from first frame, apply consistently to all
+    if config.auto_orient:
+        import copy
+
+        vt = pca_matrix(np.array(frames[0]["positions"]))
+        frames = _orient_frames(frames, vt)
+        config = copy.copy(config)
+        config.auto_orient = False
+
+    # Fixed viewport for rotation
+    axis_vec = None
+    axis_sign = 1.0
+    if axis:
+        pos0 = np.array(frames[0]["positions"])
+        config = _rotation_config(pos0, config)
+        axis_vec, axis_sign = _rotation_axis(axis)
+
+    logger.info("Rendering trajectory cartoon (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
+    pngs = _render_cartoon_frames(
+        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign
+    )
+    _stitch_grid(pngs, output, config, frame_titles=frame_titles)
     logger.info("Wrote %s", output)
