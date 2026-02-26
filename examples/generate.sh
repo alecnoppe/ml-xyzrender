@@ -44,7 +44,7 @@ xyzrender "$DIR/caffeine_homo.cube" --mo -o "$OUT/caffeine_homo_rot.svg" --gif-r
 
 echo "=== Density surface ==="
 xyzrender "$DIR/caffeine_dens.cube" --dens --iso 0.01 -o "$OUT/caffeine_dens_iso.svg"
-xyzrender "$DIR/caffeine_dens.cube" --dens --dens-color teal --dens-opacity 0.75 -o "$OUT/caffeine_dens_custom.svg"
+xyzrender "$DIR/caffeine_dens.cube" --dens --dens-color teal --opacity 0.75 -o "$OUT/caffeine_dens_custom.svg"
 xyzrender "$DIR/caffeine_dens.cube" --dens -o "$OUT/caffeine_dens.svg" --gif-rot -go "$OUT/caffeine_dens.gif"
 
 echo "=== ESP surface ==="
