@@ -11,6 +11,7 @@ import numpy as np
 from xyzgraph import build_graph
 
 from xyzrender.renderer import render_svg
+from xyzrender.types import Color
 from xyzrender.utils import kabsch_rotation, pca_matrix
 from xyzrender.bond_builder import build_distance_based_graph
 
@@ -439,9 +440,10 @@ def render_trajectory_gif(
 
     logger.info("Rendering trajectory GIF (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
     pngs = _render_frames(
-        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign
+        graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign, 
+        recompute_bonds=True, charge=charge, multiplicity=multiplicity, kekule=kekule, graph_builder=graph_builder
     )
-    _stitch_gif(pngs, output, fps)
+    _stitch_trajectory_gif(pngs, output, fps, config=config)
     logger.info("Wrote %s", output)
 
 
@@ -520,6 +522,11 @@ def _render_frames(
     fixed_ncis: list | None = None,
     rotation_axis: np.ndarray | None = None,
     rotation_sign: float = 1.0,
+    recompute_bonds: bool = False,
+    charge: int = 0,
+    multiplicity: int | None = None,
+    kekule: bool = False,
+    graph_builder: str = "distance-based"
 ) -> list[bytes]:
     """Render each trajectory frame to PNG, keeping graph topology fixed.
 
@@ -542,7 +549,17 @@ def _render_frames(
         positions = frame["positions"]
         for i, (x, y, z) in enumerate(positions):
             graph.nodes[i]["position"] = (float(x), float(y), float(z))
-
+        
+        if recompute_bonds:
+            atoms = list(zip(frame["symbols"], [tuple(p) for p in frame["positions"]], strict=True))
+            match graph_builder:
+                case "distance-based":
+                    graph = build_distance_based_graph(atoms)
+                case "default":
+                    graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
+                case _:
+                    raise Exception(f"Options for graph_builder are `distance-based` or `default`, not {graph_builder}")
+                
         if nci_analyzer is not None:
             ncis = nci_analyzer.detect(np.array(positions))
             render_graph = build_nci_graph(graph, ncis)
@@ -587,3 +604,52 @@ def _stitch_gif(pngs: list[bytes], output: str, fps: int) -> None:
     duration = int(1000 / fps)
     logger.debug("Stitching %d frames at %d fps (%d ms/frame)", len(images), fps, duration)
     images[0].save(output, save_all=True, append_images=images[1:], duration=duration, loop=0)
+    
+
+def _stitch_trajectory_gif(pngs: list[bytes], output: str, fps: int, *, config:RenderConfig=None) -> None:
+    """Stitch PNG frames into an animated GIF with vertical centering and filled background for all frames."""
+    try:
+        from PIL import Image
+    except ImportError:
+        msg = "GIF generation requires Pillow"
+        raise ImportError(msg) from None
+
+    images = []
+    for png_data in pngs:
+        img = Image.open(BytesIO(png_data)).convert("RGBA")
+        images.append(img)
+
+    # Determine max dimensions
+    max_width = max(img.width for img in images)
+    max_height = max(img.height for img in images)
+
+    processed = []
+    for img in images:
+        # Create white background canvas (RGB)
+        bg = Color.from_hex(config.background) if config else Color(256,256,256)
+        bg_rgb = bg.r, bg.g, bg.b
+        canvas = Image.new("RGB", (max_width, max_height), bg_rgb)
+
+        # Compute centering offsets
+        x_offset = (max_width - img.width) // 2
+        y_offset = (max_height - img.height) // 2
+
+        # Paste using alpha channel as mask
+        canvas.paste(img, (x_offset, y_offset), img)
+        processed.append(canvas)
+
+    duration = int(1000 / fps)
+    logger.debug(
+        "Stitching %d frames at %d fps (%d ms/frame)",
+        len(processed),
+        fps,
+        duration,
+    )
+
+    processed[0].save(
+        output,
+        save_all=True,
+        append_images=processed[1:],
+        duration=duration,
+        loop=0,
+    )

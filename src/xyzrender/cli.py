@@ -564,6 +564,7 @@ def main() -> None:
                 frames,
                 cfg,
                 gif_path,
+                graph_builder=args.graph_builder,
                 charge=args.charge,
                 multiplicity=args.multiplicity,
                 fps=args.gif_fps,
@@ -605,7 +606,6 @@ def main() -> None:
             )
             
     if args.cartoon:
-        print(args.cartoon_titles, args.cartoon_subsample_frames)
         if not args.input:
             p.error("--cartoon requires an input file")
         frames = load_trajectory_frames(args.input)
