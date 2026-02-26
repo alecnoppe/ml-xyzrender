@@ -26,7 +26,7 @@ _H_ATOM_SCALE = 0.6  # display-radius shrink factor for H atoms (ball-and-stick)
 _H_VDW_SCALE = 0.8  # VdW-sphere shrink factor for H atoms
 
 
-def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) -> str:
+def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, _id_prefix:str="") -> str:
     """Render molecular graph to SVG string."""
     cfg = config or RenderConfig()
     node_ids = list(graph.nodes())
@@ -187,7 +187,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
                 r = radii[ai] * scale
                 sa = f' stroke="{fs}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="a{ai}"><radialGradient id="g{ai}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{ai}"><radialGradient id="g{ai}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
                     f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#g{ai})"{sa}/></g>'
                 )
@@ -202,7 +202,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
                 r = radii[ai] * scale
                 sa = f' stroke="{cfg.atom_stroke_color}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="a{an}"><radialGradient id="g{an}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{an}"><radialGradient id="g{an}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
                     f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#g{an})"{sa}/></g>'
                 )
@@ -321,7 +321,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
 
         # Atom
         if use_grad:
-            ref = f"#a{ai}" if cfg.fog else f"#a{a_nums[ai]}"
+            ref = f"#{_id_prefix}a{ai}" if cfg.fog else f"#{_id_prefix}a{a_nums[ai]}"
             svg.append(f'  <use x="{xi:.1f}" y="{yi:.1f}" xlink:href="{ref}"/>')
         else:
             fill, stroke = colors[ai].hex, cfg.atom_stroke_color

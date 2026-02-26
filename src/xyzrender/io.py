@@ -30,7 +30,7 @@ def load_molecule(
     charge: int = 0,
     multiplicity: int | None = None,
     kekule: bool = False,
-    graph_builder: str = "distance-based"
+    graph_builder: str = "default"
 ) -> nx.Graph:
     """Read molecular structure file and build graph. Builds graph with either the xyzgraph backend, or the distance-
     based heuristic method commonly used in Machine Learning (GenAI for Inverse Design) approaches. 
