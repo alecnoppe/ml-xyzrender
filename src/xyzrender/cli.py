@@ -99,6 +99,7 @@ def main() -> None:
     style_g = p.add_argument_group("styling")
     style_g.add_argument("--config", default=None, help="Config preset or JSON path (default, flat, custom)")
     style_g.add_argument("-S", "--canvas-size", type=int, default=None)
+    style_g.add_argument("--padding", type=float, default=None)
     style_g.add_argument("-a", "--atom-scale", type=float, default=None)
     style_g.add_argument("-b", "--bond-width", type=float, default=None)
     style_g.add_argument("-s", "--atom-stroke-width", type=float, default=None)
@@ -184,6 +185,9 @@ def main() -> None:
     ml_g.add_argument("--grid", action="store_true", help="Whether to plot a grid of molecules.")
     ml_g.add_argument("--grid-titles", type=str, nargs="+", default=None, help="List of titles for each \
         subfigure in the grid.")
+    ml_g.add_argument("--grid-rows", type=int, default=None, help="Number of rows to use in the grid plot.")
+    ml_g.add_argument("--grid-cols", type=int, default=None, help="Number of columns to use in the grid plot.")
+    ml_g.add_argument("--flatten-grid", action="store_true", help="Whether to plot a single row of molecules.")
     ml_g.add_argument("--fog-color", type=str, default=None, help="Color for the fog.")
     ml_g.add_argument("--title", type=str, default=None, help="Title for the plot.")
     ml_g.add_argument("--title-color", type=str, default=None, help="Color for the title.")
@@ -200,6 +204,7 @@ def main() -> None:
     cli_overrides: dict = {}
     for attr, key in [
         ("canvas_size", "canvas_size"),
+        ("padding", "padding"),
         ("atom_scale", "atom_scale"),
         ("bond_width", "bond_width"),
         ("atom_stroke_width", "atom_stroke_width"),
@@ -654,6 +659,9 @@ def main() -> None:
             cfg,
             args.output,
             frame_titles=args.grid_titles,
+            n_rows=args.grid_rows,
+            n_cols=args.grid_cols,
+            _flat=args.flatten_grid,
         )
 
 if __name__ == "__main__":

@@ -528,7 +528,7 @@ def _render_frames(
     kekule: bool = False,
     graph_builder: str = "default"
 ) -> list[bytes]:
-    """Render each trajectory frame to PNG, keeping graph topology fixed.
+    """Render each trajectory frame to PNG, allowing graph topology to be updated.
 
     If *nci_analyzer* is provided, NCI interactions are re-detected per
     frame and the graph is decorated with the frame-specific NCI edges.

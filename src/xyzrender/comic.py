@@ -11,7 +11,7 @@ import numpy as np
 import re
 
 from xyzrender.gif import _orient_frames, _compute_rotation, _rotate_frames, _rotation_axis, \
-    _rotation_config, _progress
+    _progress, _fixed_viewport
 from xyzrender.utils import pca_matrix
 from xyzrender.io import build_graph
 from xyzrender.bond_builder import build_distance_based_graph
@@ -26,26 +26,44 @@ if TYPE_CHECKING:
     from xyzrender.types import RenderConfig
 
 
-def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_titles=None) -> None:
+def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_titles:list[str] | None = None, 
+                 _flat: bool = False, n_rows: int | None = None, n_cols: int | None = None) -> None:
     """
-    Stitch SVGs into a near-square grid.
+    Stitch SVGs into a grid.
 
     If the number of frames does not fill the grid exactly, the remaining
     cells are padded with white boxes.
     """
+    # If `_flat` is specified, use the comic code to create essentially a flattened grid.
+    if _flat:
+        _stitch_comic(svgs, output, config, comic_titles=frame_titles)
+        return
+    # Verify the arguments
+    if (n_rows or n_cols) and not(n_rows and n_cols):
+        raise ValueError(
+            "To use n_rows or n_cols, you must specify both."
+        )
+    if (n_rows and n_cols) and n_rows * n_cols < len(svgs):
+        raise ValueError(
+            "n_rows*n_cols must be bigger than the number of svgs."
+        )
+    if frame_titles and len(frame_titles) != len(svgs):
+        raise ValueError(
+            "Length of frame_titles must match number of frames."
+        )
+    # Determine grid size
     n_frames = len(svgs)
-
-    # --- Determine grid size (near-square) ---
-    n_cols = math.ceil(math.sqrt(n_frames))
-    n_rows = math.ceil(n_frames / n_cols)
+    n_cols = math.ceil(math.sqrt(n_frames)) if not n_cols else n_cols
+    n_rows = math.ceil(n_frames / n_cols) if not n_rows else n_rows
     n_cells = n_rows * n_cols
 
-    # --- Extract SVG sizes ---
+    # Create regex for extracting width/height from individual svgs
     SVG_SIZE_RE = re.compile(
         r'<svg[^>]*\bwidth="([^"]+)"[^>]*\bheight="([^"]+)"',
         re.IGNORECASE
     )
 
+    # Iterate over SVGs and store the width/height for each one
     widths = []
     heights = []
     for svg in svgs:
@@ -58,7 +76,7 @@ def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_ti
         widths.append(width)
         heights.append(height)
 
-    # --- Pad with dummy cells if needed ---
+    # Create padding frames if n_frames is not a perfect square
     if n_cells > n_frames:
         max_w = max(widths)
         max_h = max(heights)
@@ -67,18 +85,17 @@ def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_ti
         heights.extend([max_h] * pad_count)
         svgs = svgs + [None] * pad_count  # placeholder for empty cells
 
-    # --- Reshape into grid ---
+    # Reshape the w/h into square grid
     widths_grid = np.array(widths).reshape(n_rows, n_cols)
     heights_grid = np.array(heights).reshape(n_rows, n_cols)
-
-    # --- Compute per-column and per-row sizes ---
+    # Find max w/h
     col_widths = widths_grid.max(axis=0)
     row_heights = heights_grid.max(axis=1)
-
+    # Compute total widths
     total_width = int(col_widths.sum())
     total_height = int(row_heights.sum())
 
-    # --- Build SVG header ---
+    # Create the header of the final svg
     grid_svg = '<?xml version="1.0" encoding="UTF-8"?>\n'
     grid_svg += f"""
     <svg xmlns="http://www.w3.org/2000/svg"
@@ -88,54 +105,58 @@ def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_ti
     viewBox="0 0 {total_width} {total_height}">
     """
     grid_svg += f'<rect width="100%" height="100%" fill="{config.background}"/>\n'
+    
+    # Iterate over all svgs, and for each svg do the following
+    # For N rows: For each frame, shift to the right by `x_offset`, and down by `y_offset` and center the svg within 
+    # the frame determined by the maximum width/height of any SVG in the list.
+    # Optionally write a title in a row along the top of the comic. 
+    idx = 0
+    while idx < n_frames:
+        # Compute row/col widths and offsets.
+        row = idx // n_cols
+        col = idx % n_cols
+        x_offset = col_widths[:col].sum()
+        y_offset = row_heights[:row].sum()
+        cell_w = col_widths[col]
+        cell_h = row_heights[row]
 
-    # --- Place cells ---
-    for row in range(n_rows):
-        for col in range(n_cols):
-            idx = row * n_cols + col
+        # Add main svg content
+        dx = 0.5 * (cell_w - widths_grid[row, col])
+        dy = 0.5 * (cell_h - heights_grid[row, col])
+        grid_svg += (
+            f'<g transform="translate({x_offset + dx},{y_offset + dy})">\n'
+        )
+        grid_svg += svgs[idx] + "\n"
+        grid_svg += "</g>\n"
+        # Add titles
+        if frame_titles:
+            title_x = x_offset + cell_w / 2
+            title_y = y_offset + config.padding / 2
+            grid_svg += (
+                f'<text x="{title_x}" y="{title_y:.1f}" '
+                f'text-anchor="middle" dominant-baseline="hanging" '
+                f'font-size="{config.title_font_size}" '
+                f'font-family="{config.title_font_family}" '
+                f'fill="{config.title_color}">'
+                f'{frame_titles[idx]}</text>\n'
+            )
+        idx += 1
 
-            x_offset = col_widths[:col].sum()
-            y_offset = row_heights[:row].sum()
-
-            cell_w = col_widths[col]
-            cell_h = row_heights[row]
-
-            if svgs[idx] is not None:
-                # Center SVG inside its cell
-                dx = 0.5 * (cell_w - widths_grid[row, col])
-                dy = 0.5 * (cell_h - heights_grid[row, col])
-
-                grid_svg += (
-                    f'<g transform="translate({x_offset + dx},{y_offset + dy})">\n'
-                )
-                grid_svg += svgs[idx] + "\n"
-                grid_svg += "</g>\n"
-
-                # Optional titles
-                if frame_titles:
-                    if len(frame_titles) != n_frames:
-                        raise ValueError(
-                            "Length of frame_titles must match number of frames."
-                        )
-
-                    title_x = x_offset + cell_w / 2
-                    title_y = y_offset + config.padding / 2
-
-                    grid_svg += (
-                        f'<text x="{title_x}" y="{title_y:.1f}" '
-                        f'text-anchor="middle" dominant-baseline="hanging" '
-                        f'font-size="{config.title_font_size}" '
-                        f'font-family="{config.title_font_family}" '
-                        f'fill="{config.title_color}">'
-                        f'{frame_titles[idx]}</text>\n'
-                    )
-            else:
-                # Empty padded cell → draw white rectangle
-                grid_svg += (
-                    f'<rect x="{x_offset}" y="{y_offset}" '
-                    f'width="{cell_w}" height="{cell_h}" '
-                    f'fill="white"/>\n'
-                )
+    # Pad the grid with empty plots, if the number of frames is not a perfect square
+    while idx < n_rows * n_cols:
+        row = idx // n_cols
+        col = idx % n_cols
+        x_offset = col_widths[:col].sum()
+        y_offset = row_heights[:row].sum()
+        cell_w = col_widths[col]
+        cell_h = row_heights[row]
+        # Empty padded cell → draw background color rectangle
+        grid_svg += (
+            f'<rect x="{x_offset}" y="{y_offset}" '
+            f'width="{cell_w}" height="{cell_h}" '
+            f'fill="{config.background}"/>\n'
+        )
+        idx += 1
 
     grid_svg += "</svg>"
 
@@ -143,7 +164,6 @@ def _stitch_grid(svgs: list[str], output: str, config: RenderConfig, *, frame_ti
         f.write(grid_svg)
 
 
-# TODO: CHECK IF 'TITLE' ROW CAN BE **ABOVE** THE PLOTS, INSTEAD OF **ON** THE PLOTS.
 def _stitch_comic(svgs: list[str], output: str, config: RenderConfig, *, comic_titles=None) -> None:
     """
     Horizontally together a list of SVGS, such that they are vertically centered and may feature individual titles.
@@ -235,7 +255,7 @@ def _render_comic_frames(
     kekule: bool = False,
     graph_builder: str = "default"
 ) -> list[bytes]:
-    """Render each trajectory frame to SVG, keeping graph topology fixed.
+    """Render each trajectory frame to SVG, allowing graph topology to be updated.
 
     If *nci_analyzer* is provided, NCI interactions are re-detected per
     frame and the graph is decorated with the frame-specific NCI edges.
@@ -334,7 +354,7 @@ def plot_comic(
             graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
         case _:
             raise Exception(f"Options for graph_builder are `distance-based` or `default`, not {graph_builder}")
-
+    
     # Subsample frames to include the first frame, the last frame and n-2 frames in-between 
     indices = np.linspace(0, len(frames) - 1, num_comic_frames, dtype=int)
     frames = [frames[i] for i in indices]
@@ -369,20 +389,20 @@ def plot_comic(
         config = copy.copy(config)
         config.auto_orient = False
 
-    # Fixed viewport for rotation
     axis_vec = None
     axis_sign = 1.0
     if axis:
-        pos0 = np.array(frames[0]["positions"])
-        config = _rotation_config(pos0, config)
         axis_vec, axis_sign = _rotation_axis(axis)
 
+    # Fixed viewport across all frames so every PNG has identical dimensions
+    config = _fixed_viewport(frames, config, rotation_axis=axis_vec)
+
     logger.info("Rendering trajectory comic (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
-    pngs = _render_comic_frames(
+    svgs = _render_comic_frames(
         graph, frames, config, nci_analyzer=nci_analyzer, rotation_axis=axis_vec, rotation_sign=axis_sign, 
         recompute_bonds=True, charge=charge, multiplicity=multiplicity, kekule=kekule, graph_builder=graph_builder
     )
-    _stitch_comic(pngs, output, config, comic_titles=comic_titles)
+    _stitch_comic(svgs, output, config, comic_titles=comic_titles)
     logger.info("Wrote %s", output)
     
     
@@ -390,14 +410,18 @@ def plot_grid(graphs: list[nx.Graph],
     config: RenderConfig,
     output: str,
     *,
-    frame_titles: List[str] | None = None,):
+    frame_titles: List[str] | None = None,
+    _flat: bool = False,
+    n_rows: int | None = None,
+    n_cols: int | None = None):
     """Render multiple frames in a square grid. Looks best if |frames| = N^2 for some integer N.
     
     Args:
         graph_builder: Choose graph builder from `distance-based` and `default`.
             NOTE: for QM9 `distance-based` is prefered.
         frame_titles: Optional list of titles which can be plotted above each frame in the grid.
-
+        _flat: Whether to flatten the grid; plot a single row of svgs.
+        
     Builds the molecular graph once from the last frame (optimized geometry)
     to get correct bond orders, then updates positions per frame.
     If ``reference_graph`` is provided, all frames are rotated to match.
@@ -407,5 +431,5 @@ def plot_grid(graphs: list[nx.Graph],
     over the course of the trajectory.
     """
     svgs = [render_svg(graph, config=config, _id_prefix=str(i)) for i,graph in enumerate(graphs)]
-    _stitch_grid(svgs, output, config, frame_titles=frame_titles)
+    _stitch_grid(svgs, output, config, frame_titles=frame_titles, _flat=_flat, n_rows=n_rows, n_cols=n_cols)
     logger.info("Wrote %s", output)
