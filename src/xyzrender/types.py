@@ -7,6 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from xyzrender.esp import ESPSurface
     from xyzrender.mo import MOContours
 
 
@@ -137,7 +138,7 @@ def resolve_color(color: str) -> str:
 class RenderConfig:
     """Rendering settings."""
     canvas_size: int = 800
-    padding: float = 40.0
+    padding: float = 20.0
     atom_scale: float = 1.0
     atom_stroke_width: float = 1.5
     atom_stroke_color: str = "#000000"
@@ -163,9 +164,11 @@ class RenderConfig:
     fixed_span: float | None = None  # fixed viewport span (disables auto-fit)
     fixed_center: tuple[float, float] | None = None  # fixed XY center (disables auto-center)
     color_overrides: dict[str, str] | None = None  # element symbol → hex color
-    # MO rendering
+    # Surface rendering (MO / density / ESP share one opacity)
     mo_contours: MOContours | None = None
-    mo_opacity: float = 0.6
+    dens_contours: MOContours | None = None
+    esp_surface: ESPSurface | None = None
+    surface_opacity: float = 1.0
     title: str | None = None # title to include above the rendered molecule in the svg
     title_font_size: float = 50
     title_color: str = "#000000"

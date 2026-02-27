@@ -16,7 +16,10 @@
   "vdw_opacity": 0.25,
   "vdw_scale": 1.0,
   "vdw_gradient_strength": 1.0,
+<<<<<<< HEAD
   "mo_opacity": 0.6,
+=======
+>>>>>>> merge-dev
   "mo_pos_color": "#2554A5",
   "mo_neg_color": "#851639",
   "colors": {
