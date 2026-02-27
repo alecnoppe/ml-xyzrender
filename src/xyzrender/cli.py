@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from xyzrender.config import build_render_config, load_config
-from xyzrender.cartoon import plot_cartoon, plot_grid
+from xyzrender.comic import plot_comic, plot_grid
 
 if TYPE_CHECKING:
     from xyzrender.cube import CubeData
@@ -176,11 +176,11 @@ def main() -> None:
     ml_g = p.add_argument_group("Machine Learning Visualization Arguments")
     ml_g.add_argument("--graph-builder", "-gb", type=str, default="default", help="Which graph-builder to use \
         when constructing the graph from the .xyz file.")
-    ml_g.add_argument("--cartoon", action="store_true", help="Whether to plot a (diffusion)-trajectory cartoon.")
-    ml_g.add_argument("--cartoon-subsample-frames", type=int, default=5, help="Number of frames to plot in the cartoon. \
+    ml_g.add_argument("--comic", action="store_true", help="Whether to plot a (diffusion)-trajectory comic.")
+    ml_g.add_argument("--comic-subsample-frames", type=int, default=5, help="Number of frames to plot in the comic. \
         This will plot the first frame, the last frame and n-2 equidistant frames in between.")
-    ml_g.add_argument("--cartoon-titles", type=str, nargs="+", default=None, help="List of titles for each \
-        subfigure in the cartoon.")
+    ml_g.add_argument("--comic-titles", type=str, nargs="+", default=None, help="List of titles for each \
+        subfigure in the comic.")
     ml_g.add_argument("--grid", action="store_true", help="Whether to plot a grid of molecules.")
     ml_g.add_argument("--grid-titles", type=str, nargs="+", default=None, help="List of titles for each \
         subfigure in the grid.")
@@ -618,21 +618,21 @@ def main() -> None:
                 dens_data=dens_data,
             )
             
-    if args.cartoon:
+    if args.comic:
         if not args.input:
-            p.error("--cartoon requires an input file")
+            p.error("--comic requires an input file")
         frames = load_trajectory_frames(args.input)
         if len(frames) < 2:
-            p.error("--cartoon requires multi-frame input")
-        plot_cartoon(
+            p.error("--comic requires multi-frame input")
+        plot_comic(
             frames,
-            args.cartoon_subsample_frames,
+            args.comic_subsample_frames,
             cfg,
             args.output,
             graph_builder=args.graph_builder,
             charge=args.charge,
             multiplicity=args.multiplicity,
-            cartoon_titles=args.cartoon_titles,
+            comic_titles=args.comic_titles,
             reference_graph=graph,
             detect_nci=args.nci,
             axis=args.gif_rot or None,
