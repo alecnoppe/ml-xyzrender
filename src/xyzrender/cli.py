@@ -527,7 +527,7 @@ def main() -> None:
 
     # Render static output
     svg = render_svg(graph, cfg)
-    _write_output(svg, args.output, cfg, p)
+    if not (args.comic or args.grid or wants_gif): _write_output(svg, args.output, cfg, p)
 
     # GIF output
     if wants_gif:
