@@ -187,9 +187,9 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 r = radii[ai] * scale
                 sa = f' stroke="{fs}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="{_id_prefix}a{ai}"><radialGradient id="g{ai}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{ai}"><radialGradient id="{_id_prefix}g{ai}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
-                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#g{ai})"{sa}/></g>'
+                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#{_id_prefix}g{ai})"{sa}/></g>'
                 )
         else:
             seen = set()
@@ -202,9 +202,9 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 r = radii[ai] * scale
                 sa = f' stroke="{cfg.atom_stroke_color}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="{_id_prefix}a{an}"><radialGradient id="g{an}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{an}"><radialGradient id="{_id_prefix}g{an}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
-                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#g{an})"{sa}/></g>'
+                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#{_id_prefix}g{an})"{sa}/></g>'
                 )
         svg.append("  </defs>")
 
