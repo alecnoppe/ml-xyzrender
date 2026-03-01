@@ -372,13 +372,15 @@ def render_trajectory_gif(
     detect_nci: bool = False,
     axis: str | None = None,
     kekule: bool = False,
-    graph_builder: str = "default"
+    graph_builder: str = "default",
+    pca_orient_frame: int = 0
 ) -> None:
     """Render optimization/trajectory path as an animated GIF.
     
     Args:
         graph_builder: choose graph builder from `distance-based` and `default`.
             NOTE: for QM9 `distance-based` is prefered.
+        pca_orient_frame: which frame to use to determine the pca orientation for the frames in the comic.
 
     Builds the molecular graph once from the last frame (optimized geometry)
     to get correct bond orders, then updates positions per frame.
@@ -425,7 +427,7 @@ def render_trajectory_gif(
     if config.auto_orient:
         import copy
 
-        vt = pca_matrix(np.array(frames[0]["positions"]))
+        vt = pca_matrix(np.array(frames[pca_orient_frame]["positions"]))
         frames = _orient_frames(frames, vt)
         config = copy.copy(config)
         config.auto_orient = False

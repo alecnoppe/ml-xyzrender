@@ -148,6 +148,7 @@ def main() -> None:
     orient_g.add_argument(
         "--orient", action=argparse.BooleanOptionalAction, default=None, help="Auto-orientation (default: on)"
     )
+    orient_g.add_argument("--pca-orient-frame", type=int, default=0, help="Which frame to use to determine pca orientation")
     orient_g.add_argument("-I", "--interactive", action="store_true", help="Open in v viewer for interactive rotation")
 
     # --- TS / NCI ---
@@ -590,6 +591,7 @@ def main() -> None:
                 detect_nci=args.nci,
                 axis=args.gif_rot or None,
                 kekule=args.kekule,
+                pca_orient_frame=args.pca_orient_frame
             )
         elif args.gif_rot:
             mo_data = None
@@ -642,6 +644,7 @@ def main() -> None:
             detect_nci=args.nci,
             axis=args.gif_rot or None,
             kekule=args.kekule,
+            pca_orient_frame=args.pca_orient_frame
         )
     elif args.grid:
         if not grid_files:
