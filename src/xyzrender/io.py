@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 from xyzgraph import DATA, build_graph, read_xyz_file
-from xyzrender.bond_builder import build_distance_based_graph
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +46,9 @@ def load_molecule(
         graph_builder: which graph building backend to use. Options: `"distance-based"` or `"default"`.
             NOTE: default looks very strange for QM9, so I would recommend to use distance-based for this dataset.
     """
-    
     match graph_builder:
         case "distance-based":
-            gb = build_distance_based_graph
+            gb = partial(build_graph, charge=charge, multiplicity=multiplicity, kekule=kekule, method=graph_builder)
         case "default":
             gb = partial(build_graph, charge=charge, multiplicity=multiplicity, kekule=kekule)
         case _:

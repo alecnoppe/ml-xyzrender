@@ -14,7 +14,6 @@ from xyzrender.gif import _orient_frames, _compute_rotation, _rotate_frames, _ro
     _progress, _fixed_viewport
 from xyzrender.utils import pca_matrix
 from xyzrender.io import build_graph
-from xyzrender.bond_builder import build_distance_based_graph
 from xyzrender.renderer import render_svg
 
 logger = logging.getLogger(__name__)
@@ -281,7 +280,7 @@ def _render_comic_frames(
             atoms = list(zip(frame["symbols"], [tuple(p) for p in frame["positions"]], strict=True))
             match graph_builder:
                 case "distance-based":
-                    graph = build_distance_based_graph(atoms)
+                    graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule, method=graph_builder)
                 case "default":
                     graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
                 case _:
@@ -351,7 +350,7 @@ def plot_comic(
     last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
     match graph_builder:
         case "distance-based":
-            graph = build_distance_based_graph(last_atoms)
+            graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule, method=graph_builder)
         case "default":
             graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
         case _:

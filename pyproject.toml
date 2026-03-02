@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ml-xyzrender"
-version = "0.1.2"
+version = "0.2.0"
 description = "Publication-quality molecular graphics from the command line."
 authors = [{name = "Dr Alister S. Goodfellow"}, {name = "Alec Noppe"}]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
-    "xyzgraph>=1.6.1",
+    "ml-xyzgraph @ git+https://github.com/alecnoppe/ml-xyzgraph.git@main",
     "cclib",
     "graphrc",
     "cairosvg",

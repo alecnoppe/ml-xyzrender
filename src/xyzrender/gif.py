@@ -13,7 +13,6 @@ from xyzgraph import build_graph
 from xyzrender.renderer import render_svg
 from xyzrender.types import Color
 from xyzrender.utils import kabsch_rotation, pca_matrix
-from xyzrender.bond_builder import build_distance_based_graph
 
 logger = logging.getLogger(__name__)
 
@@ -396,7 +395,7 @@ def render_trajectory_gif(
     last_atoms = list(zip(last["symbols"], [tuple(p) for p in last["positions"]], strict=True))
     match graph_builder:
         case "distance-based":
-            graph = build_distance_based_graph(last_atoms)
+            graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule, method=graph_builder)
         case "default":
             graph = build_graph(last_atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
         case _:
@@ -556,7 +555,7 @@ def _render_frames(
             atoms = list(zip(frame["symbols"], [tuple(p) for p in frame["positions"]], strict=True))
             match graph_builder:
                 case "distance-based":
-                    graph = build_distance_based_graph(atoms)
+                    graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule, method=graph_builder)
                 case "default":
                     graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule)
                 case _:
