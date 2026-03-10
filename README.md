@@ -567,6 +567,26 @@ Format-specific flags:
 | `--mol-frame N` | Record index in multi-molecule SDF (default: 0) |
 | `--rebuild` | Ignore file connectivity; re-detect bonds with xyzgraph |
 
+
+### Trajectory comics
+
+A trajectory can also be visualized as a *comic*, by sampling equidistant frames and plotting them in a horizontal row. 
+
+![Sn2 Trajectory Comic](examples/images//sn2.v000.svg)
+
+The `--comic` flag is used to render a comic, and additionally supports the following arguments: 
+
+| Flag | Description |
+|------|-------------|
+| `--comic-subsample-frames N` | Number of (equidistant) frames to select from the trajectory (default: 5) |
+| `--comic-titles TITLE_1 TITLE_2 ...` | Titles to plot above each frame (optional) |
+| `--pca-orient-frame FRAME_IDX` | Index of the frame to use to determine the viewing angle (using pca) (default: 0) |
+
+
+```bash
+xyzrender examples/structures/sn2.v000.xyz --comic --comic-subsample-frames 5 --pca-orient-frame -1 --comic-titles "t=0" "t=5" "t=10" "t=15" "t=20"
+```
+
 ### Crystal structures / unit cell
 
 Draw the unit cell box for periodic structures from an **extXYZ** file with a `Lattice=` header. The cell is detected automatically — no extra flag needed.
@@ -879,6 +899,7 @@ xyzrender caffeine.xyz --config default --no-fog
 | `--grad` / `--no-grad` | Toggle radial gradients |
 | `-G`, `--gradient-strength` | Gradient contrast |
 | `--fog` / `--no-fog` | Toggle depth fog |
+| `--fog-color` | Color of the fog |
 | `-F`, `--fog-strength` | Depth fog strength |
 | `--bo` / `--no-bo` | Toggle bond order rendering |
 | `--vdw-opacity` | vdW sphere opacity |
@@ -968,6 +989,7 @@ Available rotation axes: `x`, `y`, `z`, `xy`, `xz`, `yz`, `yx`, `zx`, `zy`. Pref
 | `--grad` / `--no-grad` | Radial gradient toggle |
 | `-F`, `--fog-strength` | Depth fog strength |
 | `--fog` / `--no-fog` | Depth fog toggle |
+| `--fog-color` | Color of the fog |
 | `--bo` / `--no-bo` | Bond order rendering toggle |
 | **Display** | |
 | `--hy` | Show H atoms (no args=all, or 1-indexed) |
@@ -1011,6 +1033,10 @@ Available rotation axes: `x`, `y`, `z`, `xy`, `xz`, `yz`, `yx`, `zx`, `zy`. Pref
 | `--label-size PT` | Label font size (overrides preset) |
 | `--cmap FILE` | Per-atom property colormap (Viridis, 1-indexed) |
 | `--cmap-range VMIN VMAX` | Explicit colormap range (default: auto from file) |
+| `--title` | Optional title to add above the plot (default: none) |
+| `--title-color` | Color for the (optional) plot title (default: black) |
+| `--title-font-size` | Font size for the (optional) plot title (default: 50) |
+| `--title-font-family` | Font family of the (optional) title |
 | **Crystal** | |
 | `--crystal [{vasp,qe}]` | Load as crystal via phonopy; format auto-detected or specify explicitly |
 | `--no-cell` | Hide the unit cell box |
@@ -1020,6 +1046,11 @@ Available rotation axes: `x`, `y`, `z`, `xy`, `xz`, `yz`, `yx`, `zx`, `zy`. Pref
 | `--cell-width` | Unit cell box line width (default: 2.0) |
 | `--ghost-opacity` | Opacity of ghost atoms/bonds (default: 0.5) |
 | `--axis HKL` | Orient looking down a crystallographic direction (e.g. `111`, `001`) |
+| **Comic** | |
+| `--comic` | Render a comic from a given input xyz trajectory |
+| `--comic-subsample-frames N` | Number of (equidistant) frames to select from the trajectory (default: 5) |
+| `--comic-titles TITLE_1 TITLE_2 ...` | Titles to plot above each frame (optional) |
+| `--pca-orient-frame FRAME_IDX` | Index of the frame to use to determine the viewing angle (using pca) (default: 0) |
 
 ## Development
 
