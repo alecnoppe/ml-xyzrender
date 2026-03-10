@@ -8,8 +8,9 @@ import sys
 from pathlib import Path
 
 from xyzrender.api import Molecule, load, orient, render, render_gif
+from xyzrender.comic import plot_comic
 from xyzrender.config import build_config
-from xyzrender.readers import load_stdin
+from xyzrender.readers import load_stdin, load_trajectory_frames
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,7 @@ def main() -> None:
     style_g.add_argument("--vdw-opacity", type=float, default=None, help="VdW sphere opacity")
     style_g.add_argument("--vdw-scale", type=float, default=None, help="VdW sphere radius scale")
     style_g.add_argument("--vdw-gradient", type=float, default=None, help="VdW sphere gradient strength")
+    style_g.add_argument("--fog-color", type=str, default=None, help="Color for the fog.")
 
     # --- Display ---
     disp_g = p.add_argument_group("display")
@@ -178,6 +180,7 @@ def main() -> None:
     orient_g.add_argument(
         "--orient", action=argparse.BooleanOptionalAction, default=None, help="Auto-orientation (default: on)"
     )
+    orient_g.add_argument("--pca-orient-frame", type=int, default=0, help="Which frame to use to determine pca orientation")
     orient_g.add_argument("-I", "--interactive", action="store_true", help="Open in v viewer for interactive rotation")
 
     # --- TS / NCI ---
@@ -263,6 +266,10 @@ def main() -> None:
         metavar=("VMIN", "VMAX"),
         help="Explicit colormap range (default: auto from file values)",
     )
+    annot_g.add_argument("--title", type=str, default=None, help="Title for the plot.")
+    annot_g.add_argument("--title-color", type=str, default=None, help="Color for the title.")
+    annot_g.add_argument("--title-font-size", type=int, default=None, help="Font-size for the title.")
+    annot_g.add_argument("--title-font-family", type=str, default=None, help="Font-family for the title.")
 
     # --- Crystal / periodic structures ---
     crystal_g = p.add_argument_group("crystal / periodic structures")
@@ -319,8 +326,17 @@ def main() -> None:
             "Each digit is one Miller index (0-9). Requires --crystal or --cell."
         ),
     )
-
+    
+    # --- Comic plotting ---
+    comic_g = p.add_argument_group("Arguments for creating comics (of timeseries)")
+    comic_g.add_argument("--comic", action="store_true", help="Whether to plot a (diffusion)-trajectory comic.")
+    comic_g.add_argument("--comic-subsample-frames", type=int, default=5, help="Number of frames to plot in the comic. \
+        This will plot the first frame, the last frame and n-2 equidistant frames in between.")
+    comic_g.add_argument("--comic-titles", type=str, nargs="+", default=None, help="List of titles for each \
+        subfigure in the comic.")
+    
     args = p.parse_args()
+    
     from xyzrender import configure_logging
 
     configure_logging(verbose=True, debug=args.debug)
@@ -348,6 +364,7 @@ def main() -> None:
         gradient=args.grad,
         gradient_strength=args.gradient_strength,
         fog=args.fog,
+        fog_color=args.fog_color,
         fog_strength=args.fog_strength,
         bo=args.bo,
         hy=hy_spec,
@@ -355,6 +372,9 @@ def main() -> None:
         orient=_orient,
         opacity=args.opacity,
         label_font_size=args.label_size,
+        title_font_size=args.title_font_size,
+        title_color=args.title_color,
+        title_font_family=args.title_font_family,
         vdw_opacity=args.vdw_opacity,
         vdw_scale=args.vdw_scale,
         vdw_gradient_strength=args.vdw_gradient,
@@ -590,6 +610,26 @@ def main() -> None:
         except ValueError as e:
             p.error(str(e))
 
+    # If specified, plot frames of a n >= 2 length trajectory side-by-side as a 'comic'. 
+    if args.comic:
+        _ref_graph = mol.graph
+        frames = load_trajectory_frames(args.input)
+        if len(frames) < 2:
+            p.error("--comic requires multi-frame input")
+        plot_comic(
+            frames,
+            args.comic_subsample_frames,
+            cfg,
+            args.output,
+            charge=args.charge,
+            multiplicity=args.multiplicity,
+            comic_titles=args.comic_titles,
+            reference_graph=_ref_graph,
+            detect_nci=args.nci_detect,
+            axis=args.gif_rot or None,
+            kekule=args.kekule,
+            pca_orient_frame=args.pca_orient_frame
+        )
 
 if __name__ == "__main__":
     main()

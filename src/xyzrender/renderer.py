@@ -29,7 +29,7 @@ _H_ATOM_SCALE = 0.6  # display-radius shrink factor for H atoms (ball-and-stick)
 _H_VDW_SCALE = 0.8  # VdW-sphere shrink factor for H atoms
 
 
-def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) -> str:
+def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, _id_prefix: str = "") -> str:
     """Render molecular graph to SVG string."""
     cfg = config or RenderConfig()
     node_ids = list(graph.nodes())
@@ -198,7 +198,8 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
 
     # Fog factors — normalized across depth range, with a dead-zone near the front
     fog_f = np.zeros(n)
-    fog_rgb = np.array([255, 255, 255])
+    fog_color = Color.from_hex(cfg.fog_color)
+    fog_rgb = np.array([fog_color.r, fog_color.g, fog_color.b])
     if cfg.fog:
         zr = max(pos[:, 2].max() - pos[:, 2].min(), 1e-6)
         depth = pos[:, 2].max() - pos[:, 2]  # distance from front atom
@@ -214,6 +215,16 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
     if not cfg.transparent:
         svg.append(f'  <rect width="100%" height="100%" fill="{cfg.background}"/>')
 
+    if cfg.title:
+        svg.append(
+            f'  <text x="{canvas_w/2:.1f}" y="{cfg.padding/2:.1f}" '
+            f'text-anchor="middle" dominant-baseline="hanging" '
+            f'font-size="{cfg.title_font_size}" '
+            f'font-family="{cfg.title_font_family}" '
+            f'fill="{cfg.title_color}">'
+            f'{cfg.title}</text>'
+        )
+
     use_grad = cfg.gradient
     # Cmap/fog/overlay all require per-atom gradient defs (each atom may have a distinct colour)
     use_per_atom_grad = cfg.fog or cfg.atom_cmap is not None or has_overlay
@@ -227,16 +238,16 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
                 hi, lo = get_gradient_colors(colors[ai], cfg.gradient_strength)
                 if cfg.fog:
                     t = min(fog_f[ai] ** 2 * 0.7, 0.70)
-                    hi, lo = hi.blend(WHITE, t), lo.blend(WHITE, t)
+                    hi, lo = hi.blend(fog_color, t), lo.blend(fog_color, t)
                     fs = blend_fog(cfg.atom_stroke_color, fog_rgb, fog_f[ai])
                 else:
                     fs = cfg.atom_stroke_color
                 r = radii[ai] * scale
                 sa = f' stroke="{fs}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="a{ai}"><radialGradient id="g{ai}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{ai}"><radialGradient id="{_id_prefix}g{ai}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
-                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#g{ai})"{sa}/></g>'
+                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#{_id_prefix}g{ai})"{sa}/></g>'
                 )
         else:
             # Shared gradient defs keyed by atomic number (no fog, no cmap)
@@ -250,9 +261,9 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
                 r = radii[ai] * scale
                 sa = f' stroke="{cfg.atom_stroke_color}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="a{an}"><radialGradient id="g{an}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{an}"><radialGradient id="{_id_prefix}g{an}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
-                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#g{an})"{sa}/></g>'
+                    f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#{_id_prefix}g{an})"{sa}/></g>'
                 )
         svg.append("  </defs>")
 
@@ -442,7 +453,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True) 
 
         # Atom
         if use_grad:
-            ref = f"#a{ai}" if use_per_atom_grad else f"#a{a_nums[ai]}"
+            ref = f"#{_id_prefix}a{ai}" if use_per_atom_grad else f"#{_id_prefix}a{a_nums[ai]}"
             svg.append(f'  <use x="{xi:.1f}" y="{yi:.1f}" xlink:href="{ref}"{op_attr_atom}/>')
         else:
             fill, stroke = colors[ai].hex, cfg.atom_stroke_color
