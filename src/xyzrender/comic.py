@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, List
 import numpy as np
 from xyzgraph import build_graph
 
-from xyzrender.gif import _compute_rotation, _fixed_viewport, _orient_frames, _progress, _rotate_frames, _rotation_axis
+from xyzrender.gif import _compute_rotation, _fixed_viewport, _orient_frames, _progress, _rotate_frames
 from xyzrender.renderer import render_svg
 from xyzrender.utils import pca_matrix
 
@@ -109,9 +109,6 @@ def _render_comic_frames(
     config: RenderConfig,
     *,
     nci_analyzer: NCIAnalyzer | None = None,
-    fixed_ncis: list | None = None,
-    rotation_axis: np.ndarray | None = None,
-    rotation_sign: float = 1.0,
     recompute_bonds: bool = False,
     charge: int = 0,
     multiplicity: int | None = None,
@@ -121,18 +118,11 @@ def _render_comic_frames(
 
     If *nci_analyzer* is provided, NCI interactions are re-detected per
     frame and the graph is decorated with the frame-specific NCI edges.
-    If *fixed_ncis* is provided, the same NCI set is applied to every frame
-    (centroids recomputed from current atom positions each frame).
-    If *rotation_axis* is provided, each frame is incrementally rotated
-    around that axis for a full 360° over all frames.
     """
-    if nci_analyzer is not None or fixed_ncis is not None:
+    if nci_analyzer is not None:
         from xyzgraph.nci import build_nci_graph
-    if rotation_axis is not None:
-        from xyzrender.utils import apply_axis_angle_rotation
 
     total = len(frames)
-    step = 360.0 / total if rotation_axis is not None else 0
     svgs = []
     for idx, frame in enumerate(frames):
         positions = frame["positions"]
@@ -146,13 +136,8 @@ def _render_comic_frames(
         if nci_analyzer is not None:
             ncis = nci_analyzer.detect(np.array(positions))
             render_graph = build_nci_graph(graph, ncis)
-        elif fixed_ncis is not None:
-            render_graph = build_nci_graph(graph, fixed_ncis)
         else:
             render_graph = graph
-
-        if rotation_axis is not None:
-            apply_axis_angle_rotation(render_graph, rotation_axis, rotation_sign * step * idx)
 
         svg = render_svg(render_graph, config, _log=False, _id_prefix=str(idx))
         svgs.append(svg)
@@ -171,9 +156,9 @@ def render_comic(
     comic_titles: List[str] | None = None,
     reference_graph: nx.Graph | None = None,
     detect_nci: bool = False,
-    axis: str | None = None,
     kekule: bool = False,
     pca_orient_frame: int = 0,
+    recompute_bonds: bool = True,
 ) -> None:
     """Plot optimization/trajectory path as a comic.
 
@@ -198,16 +183,14 @@ def render_comic(
     If ``reference_graph`` is provided, all frames are rotated to match.
     If ``detect_nci`` is True, NCI interactions are re-detected per frame
     using xyzgraph's NCIAnalyzer (topology built once, geometry per frame).
-    If ``axis`` is provided, the molecule rotates 360° around that axis
-    over the course of the trajectory.
     """
     if comic_titles and len(comic_titles) != num_comic_frames:
         raise Exception(
-            "If you want to label the frames at each timesteps, the length of `comic_titles` must match \
-            the `num_comic_frames`."
+            "If you want to label the frames at each timesteps, the length of comic_titles must match"
+            " the num_comic_frames"
         )
     if num_comic_frames > len(frames) or num_comic_frames <= 0:
-        raise Exception("The `num_comic_frames` must be lie in interval (0, `len(frames)`] ")
+        raise Exception("The num_comic_frames must be between 0 and #frames")
 
     # Build graph from last frame (optimized geometry → correct bond orders)
     last = frames[-1]
@@ -220,11 +203,11 @@ def render_comic(
 
     # Copy TS/NCI edge attributes from reference graph
     if reference_graph is not None:
-        for i, j, d in reference_graph.edges(data=True):
-            if graph.has_edge(i, j):
-                for attr in ("TS", "NCI", "bond_type"):
-                    if attr in d:
-                        graph[i][j][attr] = d[attr]
+        shared_edges = [(i, j, d) for i, j, d in reference_graph.edges(data=True) if graph.has_edge(i, j)]
+        for i, j, d in shared_edges:
+            for attr in ("TS", "NCI", "bond_type"):
+                if attr in d:
+                    graph[i][j][attr] = d[attr]
 
     # Build NCI analyzer once from topology, detect per frame later
     nci_analyzer = None
@@ -248,23 +231,16 @@ def render_comic(
         config = copy.copy(config)
         config.auto_orient = False
 
-    axis_vec = None
-    axis_sign = 1.0
-    if axis:
-        axis_vec, axis_sign = _rotation_axis(axis)
-
     # Fixed viewport across all frames so every PNG has identical dimensions
-    config = _fixed_viewport(frames, config, rotation_axis=axis_vec)
+    config = _fixed_viewport(frames, config)
 
-    logger.info("Rendering trajectory comic (%d frames%s)", len(frames), f", axis={axis}" if axis else "")
+    logger.info("Rendering trajectory comic (%d frames)", len(frames))
     svgs = _render_comic_frames(
         graph,
         frames,
         config,
         nci_analyzer=nci_analyzer,
-        rotation_axis=axis_vec,
-        rotation_sign=axis_sign,
-        recompute_bonds=True,
+        recompute_bonds=recompute_bonds,
         charge=charge,
         multiplicity=multiplicity,
         kekule=kekule,

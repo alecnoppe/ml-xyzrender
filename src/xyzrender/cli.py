@@ -639,7 +639,6 @@ def main() -> None:
             comic_titles=args.comic_titles,
             reference_graph=_ref_graph,
             detect_nci=args.nci_detect,
-            axis=args.gif_rot or None,
             kekule=args.kekule,
             pca_orient_frame=args.pca_orient_frame,
         )
