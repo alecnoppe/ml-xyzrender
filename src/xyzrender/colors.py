@@ -57,9 +57,31 @@ _FOG_NEAR = 1.0  # Å of depth before fog kicks in
 _MAX_FOG = 0.70  # deepest atoms retain at least 30% of their color
 
 
+# Viridis-like colormap anchors — never passes through white
+_VIRIDIS_STOPS: list[Color] = [
+    Color(68, 1, 84),  # 0.00 — #440154 dark purple
+    Color(49, 104, 142),  # 0.25 — #31688E blue
+    Color(53, 183, 121),  # 0.50 — #35B779 green
+    Color(144, 215, 67),  # 0.75 — #90D743 yellow-green
+    Color(253, 231, 37),  # 1.00 — #FDE725 bright yellow
+]
+
+
+def cmap_viridis(t: float) -> Color:
+    """Map t ∈ [0, 1] to a Viridis-like color (never white)."""
+    t = max(0.0, min(1.0, float(t)))
+    n_segs = len(_VIRIDIS_STOPS) - 1
+    seg = min(int(t * n_segs), n_segs - 1)
+    local_t = t * n_segs - seg
+    return _VIRIDIS_STOPS[seg].blend(_VIRIDIS_STOPS[seg + 1], local_t)
+
+
 def blend_fog(hex_color: str, fog_rgb: np.ndarray, strength: float) -> str:
     """Blend color toward fog using strength**2, capped so atoms stay visible."""
+    from xyzrender.types import resolve_color
+
     s = min(strength**2, _MAX_FOG)
+    hex_color = resolve_color(hex_color)
     rgb = np.array([int(hex_color[i : i + 2], 16) for i in (1, 3, 5)])
     blended = (1 - s) * rgb + s * fog_rgb
     r, g, b = np.clip(blended, 0, 255).astype(int)

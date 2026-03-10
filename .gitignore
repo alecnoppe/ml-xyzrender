@@ -9,6 +9,9 @@ build/
 dist/
 *.egg-info/
 
+# Docs
+docs/build/
+
 # Virtual environment
 .venv/
 venv/
