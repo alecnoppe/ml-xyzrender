@@ -222,7 +222,7 @@ def build_config(
         ("gradient", gradient),
         ("gradient_strength", gradient_strength),
         ("fog", fog),
-        ("fog_color",fog_color),
+        ("fog_color", fog_color),
         ("fog_strength", fog_strength),
         ("bond_orders", bo),
         ("label_font_size", label_font_size),

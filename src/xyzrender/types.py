@@ -342,7 +342,7 @@ class RenderConfig:
     )  # firebrick, forestgreen, royalblue
     axis_width_scale: float = 3.0  # multiplier on cell_line_width for axis stroke width
     # Comic config
-    title: str | None = None # title to include above the rendered molecule in the svg
+    title: str | None = None  # title to include above the rendered molecule in the svg
     title_font_size: float = 50
     title_color: str = "#000000"
     title_font_family: str = "Roboto, sans-serif"

@@ -8,7 +8,7 @@ import logging
 import numpy as np
 from xyzgraph import DATA
 
-from xyzrender.colors import _FOG_NEAR, WHITE, blend_fog, cmap_viridis, get_color, get_gradient_colors
+from xyzrender.colors import _FOG_NEAR, blend_fog, cmap_viridis, get_color, get_gradient_colors
 from xyzrender.dens import dens_layers_svg
 from xyzrender.mo import (
     classify_mo_lobes,
@@ -217,12 +217,12 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
 
     if cfg.title:
         svg.append(
-            f'  <text x="{canvas_w/2:.1f}" y="{cfg.padding/2:.1f}" '
+            f'  <text x="{canvas_w / 2:.1f}" y="{cfg.padding / 2:.1f}" '
             f'text-anchor="middle" dominant-baseline="hanging" '
             f'font-size="{cfg.title_font_size}" '
             f'font-family="{cfg.title_font_family}" '
             f'fill="{cfg.title_color}">'
-            f'{cfg.title}</text>'
+            f"{cfg.title}</text>"
         )
 
     use_grad = cfg.gradient
@@ -245,7 +245,8 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 r = radii[ai] * scale
                 sa = f' stroke="{fs}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="{_id_prefix}a{ai}"><radialGradient id="{_id_prefix}g{ai}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{ai}"><radialGradient id="{_id_prefix}g{ai}" '
+                    f'cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
                     f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#{_id_prefix}g{ai})"{sa}/></g>'
                 )
@@ -261,7 +262,8 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 r = radii[ai] * scale
                 sa = f' stroke="{cfg.atom_stroke_color}" stroke-width="{sw:.1f}"'
                 svg.append(
-                    f'    <g id="{_id_prefix}a{an}"><radialGradient id="{_id_prefix}g{an}" cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
+                    f'    <g id="{_id_prefix}a{an}"><radialGradient id="{_id_prefix}g{an}"'
+                    f'cx=".5" cy=".5" fx=".33" fy=".33" r=".66">'
                     f'<stop offset="0%" stop-color="{hi.hex}"/><stop offset="100%" stop-color="{lo.hex}"/>'
                     f'</radialGradient><circle cx="0" cy="0" r="{r:.1f}" fill="url(#{_id_prefix}g{an})"{sa}/></g>'
                 )
