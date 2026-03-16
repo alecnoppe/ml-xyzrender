@@ -13,7 +13,7 @@ dependencies = [
     "numpy>=1.24",
     "ml-xyzgraph @ git+https://github.com/alecnoppe/ml-xyzgraph.git@main",
     "cclib",
-    "graphrc",
+    "graphrc @ git+https://github.com/alecnoppe/ml-graphRC.git",
     "cairosvg",
     "Pillow",
 ]
